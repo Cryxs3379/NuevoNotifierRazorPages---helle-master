@@ -1,0 +1,94 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Inicio";
+}
+
+<div class="row">
+    <div class="col-12">
+        <div class="jumbotron bg-light p-5 rounded-3 shadow-sm">
+            <h1 class="display-4">
+                <i class="bi bi-bell-fill text-primary"></i>
+                Bienvenido al Sistema Notifier
+            </h1>
+            <p class="lead mt-3">Sistema de gestión de mensajes SMS y llamadas perdidas</p>
+            <hr class="my-4">
+            <p>Selecciona una opción para comenzar:</p>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-4 mb-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-chat-dots-fill text-primary" style="font-size: 3rem;"></i>
+                <h5 class="card-title mt-3">Mensajes SMS</h5>
+                <p class="card-text">Ver mensajes entrantes y enviados, responder mensajes</p>
+                <a asp-page="/Messages/Index" class="btn btn-primary">
+                    <i class="bi bi-arrow-right-circle"></i> Ver Mensajes
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4 mb-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-send-fill text-success" style="font-size: 3rem;"></i>
+                <h5 class="card-title mt-3">Enviar Mensaje</h5>
+                <p class="card-text">Enviar un nuevo mensaje SMS a cualquier número</p>
+                <a asp-page="/Messages/Reply" class="btn btn-success">
+                    <i class="bi bi-arrow-right-circle"></i> Enviar
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4 mb-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-telephone-fill text-danger" style="font-size: 3rem;"></i>
+                <h5 class="card-title mt-3">Llamadas Perdidas</h5>
+                <p class="card-text">Consultar el historial de llamadas perdidas</p>
+                <a asp-page="/Calls/Index" class="btn btn-danger">
+                    <i class="bi bi-arrow-right-circle"></i> Ver Llamadas
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-info text-white">
+                <i class="bi bi-info-circle-fill"></i> Estado del Sistema
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Servicio Esendex:</h6>
+                        @if (Model.IsEsendexConfigured)
+                        {
+                            <span class="badge bg-success">
+                                <i class="bi bi-check-circle-fill"></i> Configurado
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-warning">
+                                <i class="bi bi-exclamation-triangle-fill"></i> No configurado (Modo Mock)
+                            </span>
+                        }
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Cuenta Esendex:</h6>
+                        <span class="text-muted">@Model.AccountReference</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

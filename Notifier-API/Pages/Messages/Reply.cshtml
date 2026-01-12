@@ -1,0 +1,185 @@
+@page
+@model MessagesReplyModel
+@{
+    ViewData["Title"] = "Enviar Mensaje SMS";
+}
+
+<div class="row">
+    <div class="col-12">
+        <h2>
+            <i class="bi bi-send-fill text-success"></i>
+            Enviar Mensaje SMS
+        </h2>
+        <p class="text-muted">Envía un mensaje SMS a cualquier número de teléfono</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8 col-md-10 mx-auto">
+        @if (Model.SuccessMessage != null)
+        {
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="bi bi-check-circle-fill"></i>
+                <strong>¡Éxito!</strong> @Model.SuccessMessage
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        }
+
+        @if (Model.ErrorMessage != null)
+        {
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <strong>Error:</strong> @Model.ErrorMessage
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        }
+
+        <div class="card shadow-sm">
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-envelope-fill"></i> Nuevo Mensaje
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <div class="mb-3">
+                        <label for="To" class="form-label">
+                            <i class="bi bi-telephone-fill"></i> Número de Destino
+                            <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" 
+                               class="form-control @(ModelState.GetFieldValidationState("To") == Microsoft.AspNetCore.Mvc.ModelBinding.ModelValidationState.Invalid ? "is-invalid" : "")" 
+                               id="To" 
+                               asp-for="To" 
+                               placeholder="+34600123456"
+                               required />
+                        <div class="form-text">
+                            Formato internacional (E.164): +34600123456
+                        </div>
+                        <span asp-validation-for="To" class="invalid-feedback"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="Message" class="form-label">
+                            <i class="bi bi-chat-text-fill"></i> Mensaje
+                            <span class="text-danger">*</span>
+                        </label>
+                        <textarea class="form-control @(ModelState.GetFieldValidationState("Message") == Microsoft.AspNetCore.Mvc.ModelBinding.ModelValidationState.Invalid ? "is-invalid" : "")" 
+                                  id="Message" 
+                                  asp-for="Message" 
+                                  rows="5" 
+                                  placeholder="Escribe tu mensaje aquí..."
+                                  maxlength="612"
+                                  required></textarea>
+                        <div class="form-text">
+                            <span id="charCount">0</span> / 612 caracteres
+                            <span id="smsCount" class="ms-2">(1 SMS)</span>
+                        </div>
+                        <span asp-validation-for="Message" class="invalid-feedback"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="AccountRef" class="form-label">
+                            <i class="bi bi-tag-fill"></i> Account Reference (opcional)
+                        </label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="AccountRef" 
+                               asp-for="AccountRef" 
+                               placeholder="EX0375657" />
+                        <div class="form-text">
+                            Dejar vacío para usar la cuenta por defecto
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a asp-page="/Messages/Index" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-success" id="sendBtn">
+                            <i class="bi bi-send-fill"></i> Enviar Mensaje
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mt-4 shadow-sm">
+            <div class="card-header bg-info text-white">
+                <i class="bi bi-info-circle-fill"></i> Información
+            </div>
+            <div class="card-body">
+                <h6>Formato del número de teléfono:</h6>
+                <ul class="mb-2">
+                    <li>Debe comenzar con <code>+</code></li>
+                    <li>Seguido del código de país (ej: 34 para España)</li>
+                    <li>Luego el número sin espacios ni guiones</li>
+                    <li>Longitud: 6-15 dígitos</li>
+                </ul>
+                
+                <h6>Ejemplos válidos:</h6>
+                <ul class="mb-0">
+                    <li><code>+34600123456</code> (España)</li>
+                    <li><code>+1234567890</code> (USA)</li>
+                    <li><code>+442071234567</code> (UK)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Contador de caracteres y SMS
+        document.addEventListener('DOMContentLoaded', function() {
+            const messageTextarea = document.getElementById('Message');
+            const charCountSpan = document.getElementById('charCount');
+            const smsCountSpan = document.getElementById('smsCount');
+
+            function updateCounts() {
+                const length = messageTextarea.value.length;
+                charCountSpan.textContent = length;
+                const smsCount = Math.ceil(length / 160) || 1;
+                smsCountSpan.textContent = `(${smsCount} SMS)`;
+                if (smsCount > 1) {
+                    smsCountSpan.classList.add('text-warning');
+                } else {
+                    smsCountSpan.classList.remove('text-warning');
+                }
+            }
+
+            messageTextarea.addEventListener('input', updateCounts);
+            updateCounts(); // Inicializar
+
+            // Validación del formulario
+            const form = messageTextarea.closest('form');
+            form.addEventListener('submit', function(e) {
+                const toInput = document.getElementById('To');
+                const phoneRegex = /^\+\d{6,15}$/;
+                if (!phoneRegex.test(toInput.value)) {
+                    e.preventDefault();
+                    toInput.classList.add('is-invalid');
+                    alert('Por favor, ingresa un número de teléfono válido en formato E.164 (+34600123456)');
+                    return false;
+                }
+                if (messageTextarea.value.trim().length === 0) {
+                    e.preventDefault();
+                    messageTextarea.classList.add('is-invalid');
+                    alert('Por favor, escribe un mensaje');
+                    return false;
+                }
+                const sendBtn = document.getElementById('sendBtn');
+                sendBtn.disabled = true;
+                sendBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
+            });
+
+            // Pre-poblar y normalizar el número si viene por query string
+            const urlParams = new URLSearchParams(window.location.search);
+            const toParam = urlParams.get('to');
+            const toInput = document.getElementById('To');
+            if (toParam && toInput.value === '') {
+                const normalized = toParam.replace(/[\s-]/g, '').replace(/^(\d{6,15})$/, '+$1');
+                toInput.value = normalized;
+            }
+        });
+    </script>
+}
+

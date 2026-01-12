@@ -1,0 +1,395 @@
+@page
+@model MessagesIndexModel
+@{
+    ViewData["Title"] = "Mensajes SMS";
+}
+
+<div class="row">
+    <div class="col-12">
+        <h2>
+            <i class="bi bi-chat-dots-fill text-primary"></i>
+            Mensajes SMS
+        </h2>
+        <p class="text-muted">Consulta los mensajes entrantes y enviados</p>
+    </div>
+</div>
+
+@if (Model.ErrorMessage != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <strong>Error:</strong> @Model.ErrorMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+<ul class="nav nav-pills mb-3">
+  <li class="nav-item">
+    <a class="nav-link @(Model.Direction.Equals("inbound", StringComparison.OrdinalIgnoreCase) ? "active" : "")"
+       asp-page="/Messages/Index"
+       asp-route-direction="inbound"
+       asp-route-page="1"
+       asp-route-pageSize="@Model.PageSize"
+       asp-route-accountRef="@Model.AccountRef">
+      Entrantes
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link @(Model.Direction.Equals("outbound", StringComparison.OrdinalIgnoreCase) ? "active" : "")"
+       asp-page="/Messages/Index"
+       asp-route-direction="outbound"
+       asp-route-page="1"
+       asp-route-pageSize="@Model.PageSize"
+       asp-route-accountRef="@Model.AccountRef">
+      Enviados
+    </a>
+  </li>
+  <li class="nav-item ms-2 align-self-center text-muted small">
+    @(Model.Direction.Equals("inbound", StringComparison.OrdinalIgnoreCase) ? "Mostrando entrantes" : "Mostrando enviados")
+  </li>
+</ul>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="get" class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Dirección</label>
+                        <select name="direction" class="form-select" asp-for="Direction">
+                            <option value="inbound">Entrantes</option>
+                            <option value="outbound">Enviados</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <label class="form-label">Mensajes por página</label>
+                        <select name="pageSize" class="form-select" asp-for="PageSize">
+                            <option value="10">10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <label class="form-label">Account Reference (opcional)</label>
+                        <input type="text" name="accountRef" class="form-control" placeholder="EX0375657" 
+                               value="@Model.AccountRef" />
+                    </div>
+                    
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-search"></i> Buscar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (Model.Messages != null && Model.Messages.Items.Any())
+{
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <span>
+                        <i class="bi bi-list-ul"></i>
+                        Mostrando @Model.Messages.Items.Count de @Model.Messages.Total mensajes
+                        (@(Model.Direction == "inbound" ? "Entrantes" : "Enviados"))
+                    </span>
+                    <a asp-page="/Messages/Reply" class="btn btn-light btn-sm">
+                        <i class="bi bi-send-fill"></i> Enviar Mensaje
+                    </a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>De</th>
+                                    <th>Para</th>
+                                    <th>Mensaje</th>
+                                    <th>Fecha/Hora</th>
+                                    <th>ID</th>
+                                    <th class="text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var message in Model.Messages.Items)
+                                {
+                                    <tr>
+                                        <td>
+                                            <span class="phone-number" title="@message.From">
+                                                @message.From
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="phone-number" title="@message.To">
+                                                @message.To
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div class="text-truncate-custom" title="@message.Message">
+                                                @message.Message
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <small class="text-muted" title="@message.ReceivedUtc.ToString("O")">
+                                                @(FormatDate(message.ReceivedUtc))
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <code class="text-muted" style="font-size: 0.75rem;" title="@message.Id">
+                                                @message.Id.Substring(0, Math.Min(8, message.Id.Length))...
+                                            </code>
+                                        </td>
+                                        <td class="text-center">
+                                            <button type="button" class="btn btn-sm btn-outline-info" 
+                                                    data-id="@message.Id" 
+                                                    onclick="viewFullMessage(this)"
+                                                    title="Ver mensaje completo">
+                                                <i class="bi bi-eye-fill"></i> Ver
+                                            </button>
+                                            <a asp-page="/Messages/Reply" 
+                                               asp-route-to="@((!string.IsNullOrWhiteSpace(message.From) && message.From.StartsWith("+") ? message.From : ("+" + message.From)))" 
+                                               class="btn btn-sm btn-outline-primary ms-1"
+                                               title="Responder">
+                                                <i class="bi bi-reply-fill"></i> Responder
+                                            </a>
+                                            @if (Model.Direction.Equals("inbound", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <button type="button" class="btn btn-sm btn-outline-danger ms-1" 
+                                                        data-id="@message.Id" onclick="deleteMessage(this)">
+                                                    <i class="bi bi-trash"></i> Eliminar
+                                                </button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <!-- Paginación -->
+                    <nav aria-label="Navegación de mensajes">
+                        <ul class="pagination justify-content-center mb-0">
+                            @if (Model.PageNumber > 1)
+                            {
+                                <li class="page-item">
+                                    <a class="page-link" asp-page="/Messages/Index" 
+                                       asp-route-currentPage="1" 
+                                       asp-route-pageSize="@Model.PageSize"
+                                       asp-route-direction="@Model.Direction"
+                                       asp-route-accountRef="@Model.AccountRef">
+                                        <i class="bi bi-chevron-double-left"></i> Primera
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" asp-page="/Messages/Index" 
+                                       asp-route-currentPage="@(Model.PageNumber - 1)" 
+                                       asp-route-pageSize="@Model.PageSize"
+                                       asp-route-direction="@Model.Direction"
+                                       asp-route-accountRef="@Model.AccountRef">
+                                        <i class="bi bi-chevron-left"></i> Anterior
+                                    </a>
+                                </li>
+                            }
+                            
+                            <li class="page-item active">
+                                <span class="page-link">
+                                    Página @Model.PageNumber de @Model.TotalPages
+                                </span>
+                            </li>
+                            
+                            @if (Model.PageNumber < Model.TotalPages)
+                            {
+                                <li class="page-item">
+                                    <a class="page-link" asp-page="/Messages/Index" 
+                                       asp-route-currentPage="@(Model.PageNumber + 1)" 
+                                       asp-route-pageSize="@Model.PageSize"
+                                       asp-route-direction="@Model.Direction"
+                                       asp-route-accountRef="@Model.AccountRef">
+                                        Siguiente <i class="bi bi-chevron-right"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" asp-page="/Messages/Index" 
+                                       asp-route-currentPage="@Model.TotalPages" 
+                                       asp-route-pageSize="@Model.PageSize"
+                                       asp-route-direction="@Model.Direction"
+                                       asp-route-accountRef="@Model.AccountRef">
+                                        Última <i class="bi bi-chevron-double-right"></i>
+                                    </a>
+                                </li>
+                            }
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else if (Model.Messages != null)
+{
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle-fill"></i>
+        <strong>No hay mensajes para mostrar.</strong>
+        <p class="mb-0">No se encontraron mensajes con los criterios seleccionados.</p>
+    </div>
+}
+
+<!-- Modal para ver mensaje completo -->
+<div class="modal fade" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="messageModalLabel">
+                    <i class="bi bi-envelope-fill"></i> Mensaje Completo
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="messageLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <p class="mt-3 text-muted">Cargando mensaje completo...</p>
+                </div>
+                <div id="messageContent" style="display: none;">
+                    <div class="mb-3">
+                        <strong>De:</strong> <span id="messageFrom" class="phone-number"></span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Para:</strong> <span id="messageTo" class="phone-number"></span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Fecha/Hora:</strong> <span id="messageDate"></span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>ID:</strong> <code id="messageId" style="font-size: 0.85rem;"></code>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <strong>Mensaje:</strong>
+                        <div id="messageBody" class="message-full-body mt-2"></div>
+                    </div>
+                </div>
+                <div id="messageError" style="display: none;" class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span id="messageErrorText"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@functions {
+    string FormatDate(DateTime dateTime)
+    {
+        var localTime = dateTime.ToLocalTime();
+        var diff = DateTime.Now - localTime;
+        
+        if (diff.TotalMinutes < 1)
+            return "Hace unos segundos";
+        if (diff.TotalMinutes < 60)
+            return $"Hace {(int)diff.TotalMinutes} min";
+        if (diff.TotalHours < 24)
+            return $"Hace {(int)diff.TotalHours}h";
+        if (diff.TotalDays < 7)
+            return $"Hace {(int)diff.TotalDays}d";
+            
+        return localTime.ToString("dd/MM/yyyy HH:mm");
+    }
+}
+
+@section Scripts {
+    <script>
+        // Auto-refresh cada 30 segundos (opcional)
+        // setTimeout(() => window.location.reload(), 30000);
+
+        async function viewFullMessage(btn) {
+            const id = btn.getAttribute('data-id');
+            if (!id) return;
+
+            const modal = new bootstrap.Modal(document.getElementById('messageModal'));
+            modal.show();
+
+            // Reset modal state
+            document.getElementById('messageLoading').style.display = 'block';
+            document.getElementById('messageContent').style.display = 'none';
+            document.getElementById('messageError').style.display = 'none';
+
+            try {
+                const res = await fetch(`/api/v1/messages/${encodeURIComponent(id)}`);
+                
+                if (res.ok) {
+                    const message = await res.json();
+                    
+                    // Populate modal with message data
+                    document.getElementById('messageFrom').textContent = message.from || 'N/A';
+                    document.getElementById('messageTo').textContent = message.to || 'N/A';
+                    // Usar el ID del botón para mantener consistencia con el listado
+                    document.getElementById('messageId').textContent = id;
+                    
+                    // Format date
+                    const date = new Date(message.receivedUtc);
+                    document.getElementById('messageDate').textContent = date.toLocaleString('es-ES', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+
+                    // Show message body (preserve line breaks)
+                    const messageBody = document.getElementById('messageBody');
+                    messageBody.textContent = message.message || 'Sin contenido';
+                    messageBody.style.whiteSpace = 'pre-wrap';
+                    messageBody.style.wordBreak = 'break-word';
+
+                    document.getElementById('messageLoading').style.display = 'none';
+                    document.getElementById('messageContent').style.display = 'block';
+                } else if (res.status === 404) {
+                    document.getElementById('messageLoading').style.display = 'none';
+                    document.getElementById('messageError').style.display = 'block';
+                    document.getElementById('messageErrorText').textContent = 'Mensaje no encontrado.';
+                } else {
+                    const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
+                    document.getElementById('messageLoading').style.display = 'none';
+                    document.getElementById('messageError').style.display = 'block';
+                    document.getElementById('messageErrorText').textContent = errorData.error || 'Error al cargar el mensaje.';
+                }
+            } catch (error) {
+                console.error('Error loading message:', error);
+                document.getElementById('messageLoading').style.display = 'none';
+                document.getElementById('messageError').style.display = 'block';
+                document.getElementById('messageErrorText').textContent = 'Error de red al cargar el mensaje.';
+            }
+        }
+
+        async function deleteMessage(btn){
+            const id = btn.getAttribute('data-id');
+            if (!id) return;
+            if (!confirm('¿Eliminar este mensaje en Esendex?')) return;
+            try {
+                const res = await fetch(`/api/v1/messages/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                if (res.status === 204) {
+                    location.reload();
+                } else {
+                    alert('No se pudo eliminar el mensaje (ver logs).');
+                }
+            } catch {
+                alert('Error de red eliminando el mensaje.');
+            }
+        }
+    </script>
+}
+
