@@ -167,6 +167,56 @@ public class EsendexInboxService : IInboxService
         return baseUrl + relativeUrl;
     }
 
+    private async Task<string?> FetchBodyFromUri(string bodyUri, CancellationToken ct)
+    {
+        try
+        {
+            string fullUri;
+            
+            // Determinar si es URL absoluta o relativa
+            if (Uri.TryCreate(bodyUri, UriKind.Absolute, out var absoluteUri))
+            {
+                // URL absoluta: usar tal cual
+                fullUri = bodyUri;
+                _logger.LogDebug("Fetching body from absolute URI: {Uri}", SanitizeUrl(fullUri));
+            }
+            else
+            {
+                // URL relativa: combinar con BaseAddress
+                var baseAddress = _httpClient.BaseAddress?.ToString() ?? "";
+                fullUri = CombineUrls(baseAddress, bodyUri);
+                _logger.LogDebug("Fetching body from relative URI: {Uri}", SanitizeUrl(fullUri));
+            }
+
+            var response = await _httpClient.GetAsync(fullUri, ct);
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                _logger.LogError("Esendex authentication failed when fetching body URI with status {StatusCode}", response.StatusCode);
+                throw new UnauthorizedAccessException("Esendex authentication failed");
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to fetch body from URI: {StatusCode}", response.StatusCode);
+                return null;
+            }
+
+            var bodyContent = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogDebug("Successfully fetched body from URI, length: {Length}", bodyContent.Length);
+            return bodyContent;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error fetching body from URI: {Uri}", SanitizeUrl(bodyUri));
+            return null;
+        }
+    }
+
     private string SanitizeUrl(string url)
     {
         // Remove credentials from URL for logging
@@ -350,13 +400,67 @@ public class EsendexInboxService : IInboxService
                     }
 
                     var content = await response.Content.ReadAsStringAsync(ct);
-                    var message = ParseFullMessageXml(content, id);
+                    var parsedInfo = ParseFullMessageXml(content, id);
                     
-                    if (message != null)
+                    if (parsedInfo != null)
                     {
-                        // Usar el ID original que se pasó como parámetro para mantener consistencia
-                        message.Id = id;
-                        _logger.LogInformation("Retrieved full message for ID {Id}, body length: {Length}", id, message.Message.Length);
+                        string finalMessage;
+                        string messageSource;
+
+                        // Si bodyText está vacío pero bodyUri existe, hacer GET a esa URI
+                        if (string.IsNullOrWhiteSpace(parsedInfo.BodyText) && !string.IsNullOrWhiteSpace(parsedInfo.BodyUri))
+                        {
+                            try
+                            {
+                                var bodyContent = await FetchBodyFromUri(parsedInfo.BodyUri, ct);
+                                if (!string.IsNullOrWhiteSpace(bodyContent))
+                                {
+                                    finalMessage = bodyContent;
+                                    messageSource = "bodyUri";
+                                    _logger.LogInformation("Message {Id}: Fetched body from URI (length: {Length})", id, finalMessage.Length);
+                                }
+                                else
+                                {
+                                    // Fallback a summary si el fetch falla
+                                    finalMessage = parsedInfo.Summary;
+                                    messageSource = "summary (bodyUri fetch returned empty)";
+                                    _logger.LogWarning("Message {Id}: bodyUri fetch returned empty, using summary fallback", id);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Fallback a summary si hay error al obtener el body
+                                finalMessage = parsedInfo.Summary;
+                                messageSource = "summary (bodyUri fetch failed)";
+                                _logger.LogWarning(ex, "Message {Id}: Failed to fetch body from URI, using summary fallback", id);
+                            }
+                        }
+                        else if (!string.IsNullOrWhiteSpace(parsedInfo.BodyText))
+                        {
+                            // Usar body inline
+                            finalMessage = parsedInfo.BodyText;
+                            messageSource = "bodyInline";
+                            _logger.LogInformation("Message {Id}: Using inline body (length: {Length})", id, finalMessage.Length);
+                        }
+                        else
+                        {
+                            // Fallback a summary
+                            finalMessage = parsedInfo.Summary;
+                            messageSource = "summary";
+                            _logger.LogInformation("Message {Id}: No body found, using summary fallback (length: {Length})", id, finalMessage.Length);
+                        }
+
+                        var message = new MessageDto
+                        {
+                            Id = id,
+                            From = parsedInfo.From,
+                            To = parsedInfo.To,
+                            Message = finalMessage,
+                            ReceivedUtc = parsedInfo.ReceivedUtc
+                        };
+
+                        _logger.LogInformation("Retrieved full message for ID {Id} from {Endpoint}, source: {Source}, body length: {Length}", 
+                            id, endpoint, messageSource, finalMessage.Length);
                         return message;
                     }
                 }
@@ -384,7 +488,17 @@ public class EsendexInboxService : IInboxService
         }
     }
 
-    private MessageDto? ParseFullMessageXml(string xmlContent, string expectedId)
+    private class ParsedMessageInfo
+    {
+        public string From { get; set; } = "";
+        public string To { get; set; } = "";
+        public string BodyText { get; set; } = "";
+        public string? BodyUri { get; set; }
+        public string Summary { get; set; } = "";
+        public DateTime ReceivedUtc { get; set; }
+    }
+
+    private ParsedMessageInfo? ParseFullMessageXml(string xmlContent, string expectedId)
     {
         try
         {
@@ -404,21 +518,26 @@ public class EsendexInboxService : IInboxService
             var from = msg.Element(ns + "from")?.Element(ns + "phonenumber")?.Value ?? "";
             var to = msg.Element(ns + "to")?.Element(ns + "phonenumber")?.Value ?? "";
 
-            // Obtener body completo (en el detalle SÍ viene el body completo)
-            var body = msg.Element(ns + "body")?.Value ?? "";
-            var summary = msg.Element(ns + "summary")?.Value ?? "";
+            // Extraer body: usar Descendants para ser más robusto (puede no ser hijo directo)
+            var bodyElement = msg.Descendants(ns + "body").FirstOrDefault();
+            var bodyText = bodyElement?.Value ?? "";
+            var bodyUri = bodyElement?.Attribute("uri")?.Value;
+
+            // Extraer summary: usar Descendants para ser más robusto
+            var summary = msg.Descendants(ns + "summary").FirstOrDefault()?.Value ?? "";
 
             var receivedAtStr =
                 msg.Element(ns + "receivedat")?.Value ??
                 msg.Element(ns + "submittedat")?.Value ??
                 msg.Element(ns + "sentat")?.Value;
 
-            return new MessageDto
+            return new ParsedMessageInfo
             {
-                Id = expectedId, // Usar el ID que se pasó como parámetro para mantener consistencia
                 From = from,
                 To = to,
-                Message = string.IsNullOrWhiteSpace(body) ? summary : body,
+                BodyText = bodyText,
+                BodyUri = bodyUri,
+                Summary = summary,
                 ReceivedUtc = ParseDateTime(receivedAtStr)
             };
         }
