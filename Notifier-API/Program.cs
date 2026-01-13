@@ -3,6 +3,7 @@ using System.Text;
 using NotifierAPI.Services;
 using NotifierAPI.Configuration;
 using NotifierAPI.Hubs;
+using NotifierAPI.Extensions;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -100,130 +101,12 @@ else
 app.UseStaticFiles();
 app.UseRouting();
 
-// Razor Pages
-app.MapRazorPages();
-
-// SignalR Hub
-app.MapHub<MessagesHub>("/hubs/messages");
+// Mapear endpoints organizados
+app.MapRazorPagesEndpoints();
+app.MapSignalRHubs();
+app.MapApiV1Endpoints();
 
 app.Logger.LogInformation("Razor Pages UI: http://localhost:5080");
 app.Logger.LogInformation("Esendex credentials configured: {IsConfigured}", hasCredentials);
-
-// Endpoint para obtener mensaje completo por ID
-app.MapGet("/api/v1/messages/{id}", async (string id, IInboxService inbox, CancellationToken ct) =>
-{
-    if (string.IsNullOrWhiteSpace(id)) 
-        return Results.BadRequest(new { error = "Id requerido" });
-    
-    try
-    {
-        var message = await inbox.GetMessageByIdAsync(id, ct);
-        if (message == null)
-            return Results.NotFound(new { error = "Mensaje no encontrado" });
-        
-        return Results.Ok(message);
-    }
-    catch (UnauthorizedAccessException)
-    {
-        return Results.Problem(statusCode: 401, title: "Error de autenticación con Esendex");
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Error obteniendo mensaje {Id}", id);
-        return Results.Problem(statusCode: 500, title: "Error al obtener el mensaje");
-    }
-})
-.WithName("GetMessageById");
-
-// Endpoint para eliminar mensajes de Esendex desde la UI
-app.MapDelete("/api/v1/messages/{id}", async (string id, IInboxService inbox, CancellationToken ct) =>
-{
-    if (string.IsNullOrWhiteSpace(id)) return Results.BadRequest(new { error = "Id requerido" });
-    var ok = await inbox.DeleteMessageAsync(id, ct);
-    return ok ? Results.NoContent() : Results.Problem(statusCode: 502, title: "No se pudo eliminar en Esendex");
-})
-.WithName("DeleteMessage");
-
-// Endpoint para obtener lista de mensajes (JSON) - para refresh parcial
-app.MapGet("/api/v1/messages", async (
-    string? direction, 
-    int? page, 
-    int? pageSize, 
-    string? accountRef,
-    IInboxService inbox, 
-    CancellationToken ct) =>
-{
-    try
-    {
-        var dir = direction ?? "inbound";
-        if (dir != "inbound" && dir != "outbound") dir = "inbound";
-        
-        var p = page ?? 1;
-        if (p < 1) p = 1;
-        
-        var ps = pageSize ?? 25;
-        if (ps < 10) ps = 10;
-        if (ps > 200) ps = 200;
-
-        var response = await inbox.GetMessagesAsync(dir, p, ps, accountRef, ct);
-        return Results.Ok(response);
-    }
-    catch (UnauthorizedAccessException)
-    {
-        return Results.Problem(statusCode: 401, title: "Error de autenticación con Esendex");
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Error obteniendo lista de mensajes");
-        return Results.Problem(statusCode: 500, title: "Error al obtener los mensajes");
-    }
-})
-.WithName("GetMessages");
-
-// Endpoint para obtener llamadas perdidas (JSON) - para refresh parcial
-app.MapGet("/api/v1/calls/missed", async (int? limit, IMissedCallsService callsService, CancellationToken ct) =>
-{
-    try
-    {
-        var lmt = limit ?? 100;
-        if (lmt < 10) lmt = 10;
-        if (lmt > 500) lmt = 500;
-
-        var response = await callsService.GetMissedCallsAsync(lmt, ct);
-        if (response == null)
-        {
-            return Results.Problem(statusCode: 502, title: "No se pudieron obtener las llamadas perdidas");
-        }
-        
-        return Results.Ok(response);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Error obteniendo llamadas perdidas");
-        return Results.Problem(statusCode: 500, title: "Error al obtener las llamadas perdidas");
-    }
-})
-.WithName("GetMissedCalls");
-
-// Endpoint para obtener estadísticas de llamadas perdidas (JSON) - para refresh parcial
-app.MapGet("/api/v1/calls/stats", async (IMissedCallsService callsService, CancellationToken ct) =>
-{
-    try
-    {
-        var stats = await callsService.GetMissedCallsStatsAsync(ct);
-        if (stats == null)
-        {
-            return Results.Problem(statusCode: 502, title: "No se pudieron obtener las estadísticas");
-        }
-        
-        return Results.Ok(stats);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Error obteniendo estadísticas de llamadas perdidas");
-        return Results.Problem(statusCode: 500, title: "Error al obtener las estadísticas");
-    }
-})
-.WithName("GetMissedCallsStats");
 
 app.Run("http://localhost:5080");
