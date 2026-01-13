@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using NotifierAPI.Services;
 using NotifierAPI.Configuration;
+using NotifierAPI.Hubs;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,11 +10,18 @@ var builder = WebApplication.CreateBuilder(args);
 // 1) Razor Pages
 builder.Services.AddRazorPages();
 
-// 2) Configuración: leer credenciales desde appsettings.json
+// 2) SignalR
+builder.Services.AddSignalR();
+
+// 3) Configuración: leer credenciales desde appsettings.json
 var esendexSettings = builder.Configuration.GetSection("Esendex").Get<EsendexSettings>() ?? new EsendexSettings();
+var watcherSettings = builder.Configuration.GetSection("Watcher").Get<WatcherSettings>() ?? new WatcherSettings();
 var missedCallsBaseUrl = builder.Configuration["MissedCallsAPI:BaseUrl"] ?? "http://localhost:5000";
 
-// 3) Servicios: usar MOCK por defecto; si hay credenciales se usa implementación real
+// Registrar WatcherSettings
+builder.Services.AddSingleton(watcherSettings);
+
+// 4) Servicios: usar MOCK por defecto; si hay credenciales se usa implementación real
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton(esendexSettings);
 
@@ -71,13 +79,32 @@ builder.Services.AddHttpClient("MissedCallsAPI", c =>
 });
 builder.Services.AddScoped<IMissedCallsService, MissedCallsService>();
 
+// EsendexMessageWatcher (BackgroundService) - solo si está habilitado
+if (watcherSettings.Enabled)
+{
+    builder.Services.AddHostedService<EsendexMessageWatcher>();
+}
+
 var app = builder.Build();
+
+// Log del estado del watcher después de construir la app
+if (watcherSettings.Enabled)
+{
+    app.Logger.LogInformation("EsendexMessageWatcher enabled with interval {IntervalSeconds}s", watcherSettings.IntervalSeconds);
+}
+else
+{
+    app.Logger.LogInformation("EsendexMessageWatcher disabled");
+}
 
 app.UseStaticFiles();
 app.UseRouting();
 
 // Razor Pages
 app.MapRazorPages();
+
+// SignalR Hub
+app.MapHub<MessagesHub>("/hubs/messages");
 
 app.Logger.LogInformation("Razor Pages UI: http://localhost:5080");
 app.Logger.LogInformation("Esendex credentials configured: {IsConfigured}", hasCredentials);

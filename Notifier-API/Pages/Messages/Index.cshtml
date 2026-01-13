@@ -310,9 +310,61 @@ else if (Model.Messages != null)
 }
 
 @section Scripts {
+    <!-- SignalR Client Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.0/signalr.min.js"></script>
+    
     <script>
         // Auto-refresh cada 30 segundos (opcional)
         // setTimeout(() => window.location.reload(), 30000);
+
+        // SignalR Connection
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl("/hubs/messages")
+            .withAutomaticReconnect()
+            .build();
+
+        // Función para refrescar los mensajes
+        function refreshMessages() {
+            // Obtener parámetros actuales de la URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const direction = urlParams.get('direction') || 'inbound';
+            const page = urlParams.get('currentPage') || '1';
+            const pageSize = urlParams.get('pageSize') || '25';
+            const accountRef = urlParams.get('accountRef') || '';
+
+            // Recargar la página con los mismos parámetros
+            // (Opción simple: recargar toda la página)
+            location.reload();
+        }
+
+        // Suscribirse a eventos de SignalR
+        connection.on("NewMessage", (message) => {
+            console.log("New message received via SignalR:", message);
+            // Recargar la página para mostrar el nuevo mensaje
+            refreshMessages();
+        });
+
+        // Iniciar conexión
+        connection.start()
+            .then(() => {
+                console.log("SignalR connected to /hubs/messages");
+            })
+            .catch((err) => {
+                console.error("SignalR connection error:", err);
+            });
+
+        // Manejar reconexión
+        connection.onreconnecting(() => {
+            console.log("SignalR reconnecting...");
+        });
+
+        connection.onreconnected(() => {
+            console.log("SignalR reconnected");
+        });
+
+        connection.onclose(() => {
+            console.log("SignalR connection closed");
+        });
 
         async function viewFullMessage(btn) {
             const id = btn.getAttribute('data-id');
