@@ -11,7 +11,20 @@ public class EsendexMessageWatcher : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<EsendexMessageWatcher> _logger;
     private readonly WatcherSettings _settings;
-    private readonly ConcurrentDictionary<string, bool> _seenMessageIds = new();
+    
+    // Cache con expiración: id -> timestamp de cuando se vio
+    private readonly ConcurrentDictionary<string, DateTime> _seenMessageIds = new();
+    
+    // Configuración de cache
+    private const int MaxCacheSize = 2000;
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromHours(1);
+    
+    // Configuración de throttling
+    private const int MaxMessagesPerTick = 20;
+    
+    // Backoff para errores
+    private int _consecutiveFailures = 0;
+    private DateTime _lastSuccessTime = DateTime.UtcNow;
 
     public EsendexMessageWatcher(
         IServiceProvider serviceProvider,
@@ -25,25 +38,106 @@ public class EsendexMessageWatcher : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("EsendexMessageWatcher started. Interval: {IntervalSeconds}s, AccountRef: {AccountRef}", 
-            _settings.IntervalSeconds, _settings.AccountRef ?? "none");
+        _logger.LogInformation("EsendexMessageWatcher started. Interval: {IntervalSeconds}s, AccountRef: {AccountRef}, CacheTTL: {CacheTTL}h, MaxCacheSize: {MaxCacheSize}", 
+            _settings.IntervalSeconds, 
+            _settings.AccountRef ?? "none",
+            CacheTtl.TotalHours,
+            MaxCacheSize);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                // Purga de cache antes de cada ciclo
+                PurgeExpiredCacheEntries();
+                
+                _logger.LogDebug("EsendexMessageWatcher tick. Cache size: {CacheSize}, Consecutive failures: {Failures}", 
+                    _seenMessageIds.Count, _consecutiveFailures);
+                
                 await CheckForNewMessages(stoppingToken);
+                
+                // Reset backoff en caso de éxito
+                if (_consecutiveFailures > 0)
+                {
+                    _logger.LogInformation("EsendexMessageWatcher recovered after {Failures} consecutive failures", _consecutiveFailures);
+                    _consecutiveFailures = 0;
+                }
+                _lastSuccessTime = DateTime.UtcNow;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in EsendexMessageWatcher cycle");
+                _consecutiveFailures++;
+                _logger.LogError(ex, "Error in EsendexMessageWatcher cycle (failure #{Failure})", _consecutiveFailures);
             }
 
-            // Esperar el intervalo configurado antes de la siguiente verificación
-            await Task.Delay(TimeSpan.FromSeconds(_settings.IntervalSeconds), stoppingToken);
+            // Esperar con backoff si hay errores
+            var waitTime = CalculateDelay();
+            _logger.LogDebug("Waiting {WaitSeconds}s before next cycle", waitTime.TotalSeconds);
+            await Task.Delay(waitTime, stoppingToken);
         }
 
         _logger.LogInformation("EsendexMessageWatcher stopped");
+    }
+
+    private void PurgeExpiredCacheEntries()
+    {
+        var now = DateTime.UtcNow;
+        var expiredCutoff = now - CacheTtl;
+        var keysToRemove = new List<string>();
+
+        // Encontrar entradas expiradas
+        foreach (var kvp in _seenMessageIds)
+        {
+            if (kvp.Value < expiredCutoff)
+            {
+                keysToRemove.Add(kvp.Key);
+            }
+        }
+
+        // Remover entradas expiradas
+        foreach (var key in keysToRemove)
+        {
+            _seenMessageIds.TryRemove(key, out _);
+        }
+
+        // Si aún excede el tamaño máximo, remover las más antiguas
+        if (_seenMessageIds.Count > MaxCacheSize)
+        {
+            var sortedByTime = _seenMessageIds.OrderBy(kvp => kvp.Value).ToList();
+            var toRemove = sortedByTime.Take(_seenMessageIds.Count - MaxCacheSize).Select(kvp => kvp.Key).ToList();
+            
+            foreach (var key in toRemove)
+            {
+                _seenMessageIds.TryRemove(key, out _);
+            }
+            
+            _logger.LogDebug("Purged {Count} old entries from cache (exceeded max size)", toRemove.Count);
+        }
+
+        if (keysToRemove.Count > 0)
+        {
+            _logger.LogDebug("Purged {Count} expired entries from cache. Current size: {Size}", 
+                keysToRemove.Count, _seenMessageIds.Count);
+        }
+    }
+
+    private TimeSpan CalculateDelay()
+    {
+        if (_consecutiveFailures == 0)
+        {
+            return TimeSpan.FromSeconds(_settings.IntervalSeconds);
+        }
+
+        // Backoff exponencial: IntervalSeconds * 2^n, máximo 5 minutos
+        var backoffMultiplier = Math.Pow(2, _consecutiveFailures - 1);
+        var backoffSeconds = _settings.IntervalSeconds * backoffMultiplier;
+        var maxBackoffSeconds = 300; // 5 minutos
+        var delaySeconds = Math.Min(backoffSeconds, maxBackoffSeconds);
+
+        _logger.LogDebug("Calculated backoff delay: {DelaySeconds}s (failures: {Failures})", 
+            delaySeconds, _consecutiveFailures);
+
+        return TimeSpan.FromSeconds(delaySeconds);
     }
 
     private async Task CheckForNewMessages(CancellationToken ct)
@@ -69,14 +163,15 @@ public class EsendexMessageWatcher : BackgroundService
             }
 
             var newMessages = new List<MessageDto>();
+            var now = DateTime.UtcNow;
 
             foreach (var message in response.Items)
             {
                 if (string.IsNullOrWhiteSpace(message.Id))
                     continue;
 
-                // Verificar si ya hemos visto este ID
-                if (_seenMessageIds.TryAdd(message.Id, true))
+                // Verificar si ya hemos visto este ID (usando timestamp)
+                if (_seenMessageIds.TryAdd(message.Id, now))
                 {
                     // Es un mensaje nuevo
                     newMessages.Add(message);
@@ -85,14 +180,38 @@ public class EsendexMessageWatcher : BackgroundService
                         message.From, 
                         message.Message?.Length ?? 0);
                 }
+                else
+                {
+                    // Actualizar timestamp si ya existe (para mantenerlo en cache)
+                    _seenMessageIds.TryUpdate(message.Id, now, _seenMessageIds[message.Id]);
+                }
             }
 
-            // Emitir eventos para cada mensaje nuevo
-            foreach (var message in newMessages)
+            if (newMessages.Count == 0)
+            {
+                _logger.LogDebug("No new messages in this cycle");
+                return;
+            }
+
+            // Throttling: limitar cantidad de mensajes por tick
+            var messagesToEmit = newMessages;
+            var truncated = false;
+            if (newMessages.Count > MaxMessagesPerTick)
+            {
+                messagesToEmit = newMessages.Take(MaxMessagesPerTick).ToList();
+                truncated = true;
+                _logger.LogWarning("Throttling: limiting to {Max} messages per tick (found {Total})", 
+                    MaxMessagesPerTick, newMessages.Count);
+            }
+
+            // Emitir eventos individuales "NewMessage" (compatibilidad)
+            int emittedCount = 0;
+            foreach (var message in messagesToEmit)
             {
                 try
                 {
                     await hubContext.Clients.All.SendAsync("NewMessage", message, ct);
+                    emittedCount++;
                     _logger.LogDebug("Emitted NewMessage event for ID={Id}", 
                         message.Id.Substring(0, Math.Min(8, message.Id.Length)) + "...");
                 }
@@ -103,20 +222,45 @@ public class EsendexMessageWatcher : BackgroundService
                 }
             }
 
-            if (newMessages.Count > 0)
+            // Opcional: emitir evento batch "NewMessages" (para futuros clientes)
+            if (messagesToEmit.Count > 0)
             {
-                _logger.LogInformation("Emitted {Count} new message(s) via SignalR", newMessages.Count);
+                try
+                {
+                    await hubContext.Clients.All.SendAsync("NewMessages", messagesToEmit, ct);
+                    _logger.LogDebug("Emitted NewMessages batch event with {Count} messages", messagesToEmit.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to emit NewMessages batch event");
+                }
+            }
+
+            if (emittedCount > 0)
+            {
+                var message = truncated 
+                    ? $"Emitted {emittedCount} new message(s) via SignalR (throttled from {newMessages.Count})"
+                    : $"Emitted {emittedCount} new message(s) via SignalR";
+                _logger.LogInformation(message);
             }
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
-            _logger.LogWarning("Authentication failed in EsendexMessageWatcher");
-            // No relanzar, continuar en el siguiente ciclo
+            _consecutiveFailures++;
+            _logger.LogWarning(ex, "Authentication failed in EsendexMessageWatcher (failure #{Failure})", _consecutiveFailures);
+            // No relanzar, continuar en el siguiente ciclo con backoff
+        }
+        catch (System.Net.Http.HttpRequestException ex)
+        {
+            _consecutiveFailures++;
+            _logger.LogWarning(ex, "Network error in EsendexMessageWatcher (failure #{Failure})", _consecutiveFailures);
+            // No relanzar, continuar en el siguiente ciclo con backoff
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error checking for new messages in EsendexMessageWatcher");
-            // No relanzar, continuar en el siguiente ciclo
+            _consecutiveFailures++;
+            _logger.LogError(ex, "Error checking for new messages in EsendexMessageWatcher (failure #{Failure})", _consecutiveFailures);
+            // No relanzar, continuar en el siguiente ciclo con backoff
         }
     }
 }
