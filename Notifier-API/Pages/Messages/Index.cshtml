@@ -93,12 +93,27 @@
 {
     <div class="row">
         <div class="col-12">
+            <!-- Banner de mensajes nuevos (oculto inicialmente) -->
+            <div id="newMessagesBanner" class="alert alert-info alert-dismissible fade" role="alert" style="display: none;">
+                <i class="bi bi-bell-fill"></i>
+                <strong>Han llegado <span id="newMessagesCount">0</span> mensaje(s) nuevo(s)</strong>
+                <button type="button" class="btn btn-sm btn-primary ms-2" onclick="refreshMessages()">
+                    <i class="bi bi-arrow-clockwise"></i> Cargar ahora
+                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" onclick="dismissNewMessagesBanner()"></button>
+            </div>
+            
             <div class="card shadow-sm">
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                     <span>
                         <i class="bi bi-list-ul"></i>
-                        Mostrando @Model.Messages.Items.Count de @Model.Messages.Total mensajes
-                        (@(Model.Direction == "inbound" ? "Entrantes" : "Enviados"))
+                        <span id="messagesCountText">
+                            Mostrando @Model.Messages.Items.Count de @Model.Messages.Total mensajes
+                            (@(Model.Direction == "inbound" ? "Entrantes" : "Enviados"))
+                        </span>
+                        <span id="signalRStatus" class="badge bg-light text-dark ms-2" style="font-size: 0.7rem;">
+                            <i class="bi bi-circle-fill" id="signalRStatusIcon"></i> <span id="signalRStatusText">Conectando...</span>
+                        </span>
                     </span>
                     <a asp-page="/Messages/Reply" class="btn btn-light btn-sm">
                         <i class="bi bi-send-fill"></i> Enviar Mensaje
@@ -117,10 +132,10 @@
                                     <th class="text-center">Acciones</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="messagesTableBody">
                                 @foreach (var message in Model.Messages.Items)
                                 {
-                                    <tr>
+                                    <tr data-message-id="@message.Id">
                                         <td>
                                             <span class="phone-number" title="@message.From">
                                                 @message.From
@@ -235,6 +250,16 @@
 }
 else if (Model.Messages != null)
 {
+    <!-- Banner de mensajes nuevos (oculto inicialmente) -->
+    <div id="newMessagesBanner" class="alert alert-info alert-dismissible fade" role="alert" style="display: none;">
+        <i class="bi bi-bell-fill"></i>
+        <strong>Han llegado <span id="newMessagesCount">0</span> mensaje(s) nuevo(s)</strong>
+        <button type="button" class="btn btn-sm btn-primary ms-2" onclick="refreshMessages()">
+            <i class="bi bi-arrow-clockwise"></i> Cargar ahora
+        </button>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" onclick="dismissNewMessagesBanner()"></button>
+    </div>
+    
     <div class="alert alert-info">
         <i class="bi bi-info-circle-fill"></i>
         <strong>No hay mensajes para mostrar.</strong>
@@ -314,8 +339,25 @@ else if (Model.Messages != null)
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.0/signalr.min.js"></script>
     
     <script>
-        // Auto-refresh cada 30 segundos (opcional)
-        // setTimeout(() => window.location.reload(), 30000);
+        // Estado de la aplicación
+        const currentDirection = '@Model.Direction'.toLowerCase();
+        const currentPage = @Model.PageNumber;
+        const currentTotal = @(Model.Messages?.Total ?? 0);
+        const currentCount = @(Model.Messages?.Items.Count ?? 0);
+        const isInbound = currentDirection === 'inbound';
+        
+        // Set de IDs ya presentes en la tabla
+        const seenMessageIds = new Set();
+        @if (Model.Messages?.Items != null)
+        {
+            foreach (var message in Model.Messages.Items)
+            {
+                <text>seenMessageIds.add(@Html.Raw(Json.Serialize(message.Id)));</text>
+            }
+        }
+        
+        // Contador de mensajes nuevos no insertados
+        let newMessagesCount = 0;
 
         // SignalR Connection
         const connection = new signalR.HubConnectionBuilder()
@@ -323,47 +365,242 @@ else if (Model.Messages != null)
             .withAutomaticReconnect()
             .build();
 
-        // Función para refrescar los mensajes
-        function refreshMessages() {
-            // Obtener parámetros actuales de la URL
-            const urlParams = new URLSearchParams(window.location.search);
-            const direction = urlParams.get('direction') || 'inbound';
-            const page = urlParams.get('currentPage') || '1';
-            const pageSize = urlParams.get('pageSize') || '25';
-            const accountRef = urlParams.get('accountRef') || '';
+        // Función para formatear fecha (similar a C#)
+        function formatDate(dateTime) {
+            const date = new Date(dateTime);
+            const now = new Date();
+            const diff = now - date;
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
+            
+            if (minutes < 1) return "Hace unos segundos";
+            if (minutes < 60) return `Hace ${minutes} min`;
+            if (hours < 24) return `Hace ${hours}h`;
+            if (days < 7) return `Hace ${days}d`;
+            
+            return date.toLocaleString('es-ES', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
 
-            // Recargar la página con los mismos parámetros
-            // (Opción simple: recargar toda la página)
+        // Función para renderizar una fila de mensaje
+        function renderMessageRow(message) {
+            const from = message.from || 'N/A';
+            const to = message.to || 'N/A';
+            const messageText = message.message || '';
+            const id = message.id || '';
+            const receivedUtc = message.receivedUtc || new Date().toISOString();
+            const idShort = id.substring(0, Math.min(8, id.length)) + '...';
+            
+            // Construir URL de responder
+            const replyTo = from.startsWith('+') ? from : '+' + from;
+            const replyUrl = `/Messages/Reply?to=${encodeURIComponent(replyTo)}`;
+            
+            // Botones según dirección
+            let actionButtons = `
+                <button type="button" class="btn btn-sm btn-outline-info" 
+                        data-id="${id}" 
+                        onclick="viewFullMessage(this)"
+                        title="Ver mensaje completo">
+                    <i class="bi bi-eye-fill"></i> Ver
+                </button>
+                <a href="${replyUrl}" 
+                   class="btn btn-sm btn-outline-primary ms-1"
+                   title="Responder">
+                    <i class="bi bi-reply-fill"></i> Responder
+                </a>`;
+            
+            if (isInbound) {
+                actionButtons += `
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-1" 
+                            data-id="${id}" onclick="deleteMessage(this)">
+                        <i class="bi bi-trash"></i> Eliminar
+                    </button>`;
+            }
+            
+            return `
+                <tr data-message-id="${id}" class="table-warning">
+                    <td>
+                        <span class="phone-number" title="${from}">${from}</span>
+                    </td>
+                    <td>
+                        <span class="phone-number" title="${to}">${to}</span>
+                    </td>
+                    <td>
+                        <div class="text-truncate-custom" title="${messageText}">${messageText}</div>
+                    </td>
+                    <td>
+                        <small class="text-muted" title="${receivedUtc}">${formatDate(receivedUtc)}</small>
+                    </td>
+                    <td>
+                        <code class="text-muted" style="font-size: 0.75rem;" title="${id}">${idShort}</code>
+                    </td>
+                    <td class="text-center">
+                        ${actionButtons}
+                    </td>
+                </tr>`;
+        }
+
+        // Función para insertar un mensaje nuevo en la tabla
+        function insertNewMessage(message) {
+            if (!message || !message.id) {
+                console.warn("Message missing required fields:", message);
+                incrementNewMessagesCount();
+                return;
+            }
+
+            // Verificar si ya existe
+            if (seenMessageIds.has(message.id)) {
+                console.log("Message already exists, ignoring:", message.id);
+                return;
+            }
+
+            // Solo insertar si estamos en página 1 y dirección coincide
+            if (currentPage !== 1) {
+                incrementNewMessagesCount();
+                return;
+            }
+
+            // Verificar dirección (asumimos que NewMessage siempre es inbound)
+            if (!isInbound) {
+                incrementNewMessagesCount();
+                return;
+            }
+
+            // Verificar que tenga campos mínimos
+            if (!message.from || !message.to || !message.message) {
+                console.warn("Message missing required fields, showing banner instead");
+                incrementNewMessagesCount();
+                return;
+            }
+
+            // Insertar la fila al principio de la tabla
+            const tbody = document.getElementById('messagesTableBody');
+            if (!tbody) {
+                // Si no hay tabla, mostrar banner para que el usuario recargue
+                console.log("Table body not found, showing banner instead");
+                incrementNewMessagesCount();
+                return;
+            }
+
+            const newRow = renderMessageRow(message);
+            tbody.insertAdjacentHTML('afterbegin', newRow);
+            
+            // Añadir al set de IDs vistos
+            seenMessageIds.add(message.id);
+            
+            // Actualizar contadores visuales
+            updateMessagesCount(currentCount + 1, currentTotal + 1);
+            
+            // Remover clase de highlight después de 3 segundos
+            setTimeout(() => {
+                const row = tbody.querySelector(`tr[data-message-id="${message.id}"]`);
+                if (row) {
+                    row.classList.remove('table-warning');
+                }
+            }, 3000);
+            
+            console.log("New message inserted:", message.id);
+        }
+
+        // Función para incrementar contador de mensajes nuevos
+        function incrementNewMessagesCount() {
+            newMessagesCount++;
+            showNewMessagesBanner();
+        }
+
+        // Función para mostrar banner de mensajes nuevos
+        function showNewMessagesBanner() {
+            const banner = document.getElementById('newMessagesBanner');
+            const countSpan = document.getElementById('newMessagesCount');
+            if (banner && countSpan) {
+                countSpan.textContent = newMessagesCount;
+                banner.style.display = 'block';
+                banner.classList.add('show');
+            }
+        }
+
+        // Función para ocultar banner de mensajes nuevos
+        function dismissNewMessagesBanner() {
+            newMessagesCount = 0;
+            const banner = document.getElementById('newMessagesBanner');
+            if (banner) {
+                banner.classList.remove('show');
+                setTimeout(() => {
+                    banner.style.display = 'none';
+                }, 150);
+            }
+        }
+
+        // Función para actualizar contador de mensajes
+        function updateMessagesCount(count, total) {
+            const countText = document.getElementById('messagesCountText');
+            if (countText) {
+                const directionText = isInbound ? 'Entrantes' : 'Enviados';
+                countText.textContent = `Mostrando ${count} de ${total} mensajes (${directionText})`;
+            }
+        }
+
+        // Función para refrescar los mensajes (reload manual)
+        function refreshMessages() {
             location.reload();
+        }
+
+        // Actualizar estado de conexión SignalR
+        function updateSignalRStatus(status, text) {
+            const statusIcon = document.getElementById('signalRStatusIcon');
+            const statusText = document.getElementById('signalRStatusText');
+            
+            if (statusIcon && statusText) {
+                statusIcon.className = 'bi bi-circle-fill';
+                statusText.textContent = text;
+                
+                if (status === 'connected') {
+                    statusIcon.classList.add('text-success');
+                } else if (status === 'reconnecting') {
+                    statusIcon.classList.add('text-warning');
+                } else {
+                    statusIcon.classList.add('text-danger');
+                }
+            }
         }
 
         // Suscribirse a eventos de SignalR
         connection.on("NewMessage", (message) => {
             console.log("New message received via SignalR:", message);
-            // Recargar la página para mostrar el nuevo mensaje
-            refreshMessages();
+            insertNewMessage(message);
         });
 
         // Iniciar conexión
         connection.start()
             .then(() => {
                 console.log("SignalR connected to /hubs/messages");
+                updateSignalRStatus('connected', 'Conectado');
             })
             .catch((err) => {
                 console.error("SignalR connection error:", err);
+                updateSignalRStatus('disconnected', 'Desconectado');
             });
 
         // Manejar reconexión
         connection.onreconnecting(() => {
             console.log("SignalR reconnecting...");
+            updateSignalRStatus('reconnecting', 'Reintentando...');
         });
 
         connection.onreconnected(() => {
             console.log("SignalR reconnected");
+            updateSignalRStatus('connected', 'Conectado');
         });
 
         connection.onclose(() => {
             console.log("SignalR connection closed");
+            updateSignalRStatus('disconnected', 'Desconectado');
         });
 
         async function viewFullMessage(btn) {
