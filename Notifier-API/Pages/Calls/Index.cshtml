@@ -35,12 +35,12 @@
 <!-- Estadísticas -->
 @if (Model.Stats != null)
 {
-    <div class="row mb-4">
+    <div class="row mb-4" id="statsCards">
         <div class="col-md-3 mb-3">
             <div class="card shadow-sm border-danger">
                 <div class="card-body text-center">
                     <i class="bi bi-telephone-x-fill text-danger" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2 mb-0">@Model.Stats.TotalMissedCalls</h3>
+                    <h3 class="mt-2 mb-0" id="statsTotal">@Model.Stats.TotalMissedCalls</h3>
                     <p class="text-muted mb-0">Total</p>
                 </div>
             </div>
@@ -49,7 +49,7 @@
             <div class="card shadow-sm border-warning">
                 <div class="card-body text-center">
                     <i class="bi bi-calendar-day-fill text-warning" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2 mb-0">@Model.Stats.TodayMissedCalls</h3>
+                    <h3 class="mt-2 mb-0" id="statsToday">@Model.Stats.TodayMissedCalls</h3>
                     <p class="text-muted mb-0">Hoy</p>
                 </div>
             </div>
@@ -58,7 +58,7 @@
             <div class="card shadow-sm border-info">
                 <div class="card-body text-center">
                     <i class="bi bi-calendar-week-fill text-info" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2 mb-0">@Model.Stats.ThisWeekMissedCalls</h3>
+                    <h3 class="mt-2 mb-0" id="statsWeek">@Model.Stats.ThisWeekMissedCalls</h3>
                     <p class="text-muted mb-0">Esta Semana</p>
                 </div>
             </div>
@@ -68,7 +68,7 @@
                 <div class="card-body text-center">
                     <i class="bi bi-clock-history text-primary" style="font-size: 2rem;"></i>
                     <p class="text-muted mb-1 mt-2">Última llamada</p>
-                    <p class="mb-0"><small>@Model.LastCallTime</small></p>
+                    <p class="mb-0"><small id="statsLastCall">@Model.LastCallTime</small></p>
                 </div>
             </div>
         </div>
@@ -99,8 +99,8 @@
                     </div>
                     
                     <div class="col-md-4 d-flex align-items-end">
-                        <button type="button" class="btn btn-outline-secondary w-100" onclick="window.location.reload()">
-                            <i class="bi bi-arrow-clockwise"></i> Actualizar
+                        <button type="button" class="btn btn-outline-secondary w-100" id="refreshCallsBtn" onclick="refreshCallsPartial()">
+                            <i class="bi bi-arrow-clockwise" id="refreshCallsIcon"></i> Actualizar
                         </button>
                     </div>
                 </form>
@@ -137,7 +137,28 @@
                                     <th class="text-center">Acciones</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="callsTableBody">
+                                <!-- Spinner de carga (oculto inicialmente) -->
+                                <tr id="loadingRow" style="display: none;">
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="spinner-border text-danger" role="status">
+                                            <span class="visually-hidden">Cargando...</span>
+                                        </div>
+                                        <p class="mt-2 text-muted">Actualizando llamadas...</p>
+                                    </td>
+                                </tr>
+                                <!-- Fila de error (oculta inicialmente) -->
+                                <tr id="errorRow" style="display: none;">
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="alert alert-danger mb-0">
+                                            <i class="bi bi-exclamation-triangle-fill"></i>
+                                            <span id="errorMessageText">Error al cargar llamadas</span>
+                                            <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="refreshCallsPartial()">
+                                                Reintentar
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
                                 @foreach (var call in Model.MissedCalls)
                                 {
                                     <tr>
@@ -222,6 +243,183 @@ else if (Model.MissedCalls != null)
     <script>
         // Auto-refresh cada 30 segundos (opcional)
         // setTimeout(() => window.location.reload(), 30000);
+
+        // Función para formatear tiempo relativo
+        function formatRelativeTime(dateTime) {
+            const date = new Date(dateTime);
+            const now = new Date();
+            const diff = now - date;
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
+            
+            if (minutes < 1) return "Hace unos segundos";
+            if (minutes < 60) return `Hace ${minutes} min`;
+            if (hours < 24) return `Hace ${hours}h`;
+            if (days < 7) return `Hace ${days}d`;
+            
+            return date.toLocaleString('es-ES', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Función para renderizar una fila de llamada
+        function renderCallRow(call) {
+            const date = new Date(call.dateAndTime);
+            const dateStr = date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const timeStr = date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            
+            let statusBadge = '';
+            if (call.status === 0) {
+                statusBadge = '<span class="badge bg-danger"><i class="bi bi-telephone-x-fill"></i> Perdida</span>';
+            } else {
+                statusBadge = '<span class="badge bg-success"><i class="bi bi-telephone-check-fill"></i> Respondida</span>';
+            }
+            
+            let calledAgainBadge = '';
+            if (call.clientCalledAgain !== null && call.clientCalledAgain !== undefined) {
+                if (call.clientCalledAgain !== 0) {
+                    calledAgainBadge = '<span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Sí</span>';
+                } else {
+                    calledAgainBadge = '<span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> No</span>';
+                }
+            } else {
+                calledAgainBadge = '<span class="badge bg-secondary"><i class="bi bi-question-circle-fill"></i> N/A</span>';
+            }
+            
+            return `
+                <tr>
+                    <td><code class="text-muted">#${call.id}</code></td>
+                    <td>
+                        <div title="${call.dateAndTime}">
+                            <strong>${dateStr}</strong><br>
+                            <small class="text-muted">${timeStr}</small>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="phone-number">
+                            <i class="bi bi-telephone-fill text-muted"></i>
+                            ${call.phoneNumber}
+                        </span>
+                    </td>
+                    <td>${statusBadge}</td>
+                    <td>${calledAgainBadge}</td>
+                    <td class="text-center">
+                        <a href="/Messages/Reply?to=${encodeURIComponent(call.phoneNumber)}" 
+                           class="btn btn-sm btn-outline-primary"
+                           title="Enviar SMS a este número">
+                            <i class="bi bi-send-fill"></i> SMS
+                        </a>
+                    </td>
+                </tr>`;
+        }
+
+        // Función para refrescar llamadas parcialmente
+        async function refreshCallsPartial() {
+            const tbody = document.getElementById('callsTableBody');
+            const loadingRow = document.getElementById('loadingRow');
+            const errorRow = document.getElementById('errorRow');
+            const refreshBtn = document.getElementById('refreshCallsBtn');
+            const refreshIcon = document.getElementById('refreshCallsIcon');
+            
+            if (!tbody) return;
+
+            // Ocultar error si existe
+            if (errorRow) errorRow.style.display = 'none';
+            
+            // Mostrar loading
+            if (loadingRow) loadingRow.style.display = 'table-row';
+            if (refreshBtn) refreshBtn.disabled = true;
+            if (refreshIcon) refreshIcon.classList.add('spinner-border', 'spinner-border-sm');
+            
+            // Ocultar todas las filas de datos temporalmente
+            const dataRows = tbody.querySelectorAll('tr:not(#loadingRow):not(#errorRow)');
+            dataRows.forEach(row => row.style.display = 'none');
+
+            try {
+                // Obtener límite actual
+                const urlParams = new URLSearchParams(window.location.search);
+                const limit = urlParams.get('limit') || '100';
+
+                // Actualizar estadísticas
+                const statsResponse = await fetch('/api/v1/calls/stats');
+                if (statsResponse.ok) {
+                    const stats = await statsResponse.json();
+                    const totalEl = document.getElementById('statsTotal');
+                    const todayEl = document.getElementById('statsToday');
+                    const weekEl = document.getElementById('statsWeek');
+                    const lastCallEl = document.getElementById('statsLastCall');
+                    
+                    if (totalEl) totalEl.textContent = stats.totalMissedCalls || 0;
+                    if (todayEl) todayEl.textContent = stats.todayMissedCalls || 0;
+                    if (weekEl) weekEl.textContent = stats.thisWeekMissedCalls || 0;
+                    
+                    if (lastCallEl && stats.lastMissedCall) {
+                        try {
+                            const lastCall = typeof stats.lastMissedCall === 'string' 
+                                ? JSON.parse(stats.lastMissedCall) 
+                                : stats.lastMissedCall;
+                            if (lastCall.dateAndTime) {
+                                const lastCallDate = new Date(lastCall.dateAndTime);
+                                lastCallEl.textContent = formatRelativeTime(lastCallDate);
+                            }
+                        } catch (e) {
+                            lastCallEl.textContent = 'N/A';
+                        }
+                    }
+                }
+
+                // Actualizar tabla de llamadas
+                const callsResponse = await fetch(`/api/v1/calls/missed?limit=${encodeURIComponent(limit)}`);
+                
+                if (!callsResponse.ok) {
+                    throw new Error(`HTTP ${callsResponse.status}: ${callsResponse.statusText}`);
+                }
+
+                const callsData = await callsResponse.json();
+                
+                // Limpiar tbody (excepto loading/error rows)
+                dataRows.forEach(row => row.remove());
+                
+                // Renderizar nuevas filas
+                if (callsData.data && callsData.data.length > 0) {
+                    callsData.data.forEach(call => {
+                        const row = renderCallRow(call);
+                        tbody.insertAdjacentHTML('beforeend', row);
+                    });
+                } else {
+                    tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="6" class="text-center py-4 text-muted">No hay llamadas perdidas</td></tr>');
+                }
+                
+                // Ocultar loading
+                if (loadingRow) loadingRow.style.display = 'none';
+                
+            } catch (error) {
+                console.error('Error refreshing calls:', error);
+                
+                // Mostrar error
+                if (errorRow) {
+                    const errorText = document.getElementById('errorMessageText');
+                    if (errorText) {
+                        errorText.textContent = `Error al cargar llamadas: ${error.message}`;
+                    }
+                    errorRow.style.display = 'table-row';
+                }
+                
+                // Restaurar filas ocultas
+                dataRows.forEach(row => row.style.display = '');
+                
+            } finally {
+                // Restaurar botón
+                if (loadingRow) loadingRow.style.display = 'none';
+                if (refreshBtn) refreshBtn.disabled = false;
+                if (refreshIcon) refreshIcon.classList.remove('spinner-border', 'spinner-border-sm');
+            }
+        }
     </script>
 }
 

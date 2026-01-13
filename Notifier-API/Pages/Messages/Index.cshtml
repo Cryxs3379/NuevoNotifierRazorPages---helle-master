@@ -115,9 +115,14 @@
                             <i class="bi bi-circle-fill" id="signalRStatusIcon"></i> <span id="signalRStatusText">Conectando...</span>
                         </span>
                     </span>
-                    <a asp-page="/Messages/Reply" class="btn btn-light btn-sm">
-                        <i class="bi bi-send-fill"></i> Enviar Mensaje
-                    </a>
+                    <div>
+                        <button type="button" class="btn btn-light btn-sm" id="refreshMessagesBtn" onclick="refreshMessagesPartial()" title="Actualizar mensajes">
+                            <i class="bi bi-arrow-clockwise" id="refreshMessagesIcon"></i> Actualizar
+                        </button>
+                        <a asp-page="/Messages/Reply" class="btn btn-light btn-sm ms-2">
+                            <i class="bi bi-send-fill"></i> Enviar Mensaje
+                        </a>
+                    </div>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -133,6 +138,27 @@
                                 </tr>
                             </thead>
                             <tbody id="messagesTableBody">
+                                <!-- Spinner de carga (oculto inicialmente) -->
+                                <tr id="loadingRow" style="display: none;">
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Cargando...</span>
+                                        </div>
+                                        <p class="mt-2 text-muted">Actualizando mensajes...</p>
+                                    </td>
+                                </tr>
+                                <!-- Fila de error (oculta inicialmente) -->
+                                <tr id="errorRow" style="display: none;">
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="alert alert-danger mb-0">
+                                            <i class="bi bi-exclamation-triangle-fill"></i>
+                                            <span id="errorMessageText">Error al cargar mensajes</span>
+                                            <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="refreshMessagesPartial()">
+                                                Reintentar
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
                                 @foreach (var message in Model.Messages.Items)
                                 {
                                     <tr data-message-id="@message.Id">
@@ -549,6 +575,94 @@ else if (Model.Messages != null)
         // Función para refrescar los mensajes (reload manual)
         function refreshMessages() {
             location.reload();
+        }
+
+        // Función para refrescar mensajes parcialmente (sin reload)
+        async function refreshMessagesPartial() {
+            const tbody = document.getElementById('messagesTableBody');
+            const loadingRow = document.getElementById('loadingRow');
+            const errorRow = document.getElementById('errorRow');
+            const refreshBtn = document.getElementById('refreshMessagesBtn');
+            const refreshIcon = document.getElementById('refreshMessagesIcon');
+            
+            if (!tbody) return;
+
+            // Ocultar error si existe
+            if (errorRow) errorRow.style.display = 'none';
+            
+            // Mostrar loading
+            if (loadingRow) loadingRow.style.display = 'table-row';
+            if (refreshBtn) refreshBtn.disabled = true;
+            if (refreshIcon) refreshIcon.classList.add('spinner-border', 'spinner-border-sm');
+            
+            // Ocultar todas las filas de datos temporalmente
+            const dataRows = tbody.querySelectorAll('tr[data-message-id]');
+            dataRows.forEach(row => row.style.display = 'none');
+
+            try {
+                // Obtener parámetros actuales
+                const urlParams = new URLSearchParams(window.location.search);
+                const direction = urlParams.get('direction') || 'inbound';
+                const page = urlParams.get('currentPage') || '1';
+                const pageSize = urlParams.get('pageSize') || '25';
+                const accountRef = urlParams.get('accountRef') || '';
+
+                // Construir URL del endpoint
+                const apiUrl = `/api/v1/messages?direction=${encodeURIComponent(direction)}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}${accountRef ? '&accountRef=' + encodeURIComponent(accountRef) : ''}`;
+
+                const response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                
+                // Limpiar tbody (excepto loading/error rows)
+                dataRows.forEach(row => row.remove());
+                
+                // Renderizar nuevas filas
+                if (data.items && data.items.length > 0) {
+                    data.items.forEach(message => {
+                        const row = renderMessageRow(message);
+                        tbody.insertAdjacentHTML('beforeend', row);
+                        // Añadir al set de IDs vistos
+                        if (message.id) {
+                            seenMessageIds.add(message.id);
+                        }
+                    });
+                } else {
+                    // Si no hay mensajes, mostrar mensaje
+                    tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="6" class="text-center py-4 text-muted">No hay mensajes para mostrar</td></tr>');
+                }
+
+                // Actualizar contador
+                updateMessagesCount(data.items?.length || 0, data.total || 0);
+                
+                // Ocultar loading
+                if (loadingRow) loadingRow.style.display = 'none';
+                
+            } catch (error) {
+                console.error('Error refreshing messages:', error);
+                
+                // Mostrar error
+                if (errorRow) {
+                    const errorText = document.getElementById('errorMessageText');
+                    if (errorText) {
+                        errorText.textContent = `Error al cargar mensajes: ${error.message}`;
+                    }
+                    errorRow.style.display = 'table-row';
+                }
+                
+                // Restaurar filas ocultas
+                dataRows.forEach(row => row.style.display = '');
+                
+            } finally {
+                // Restaurar botón
+                if (loadingRow) loadingRow.style.display = 'none';
+                if (refreshBtn) refreshBtn.disabled = false;
+                if (refreshIcon) refreshIcon.classList.remove('spinner-border', 'spinner-border-sm');
+            }
         }
 
         // Actualizar estado de conexión SignalR
