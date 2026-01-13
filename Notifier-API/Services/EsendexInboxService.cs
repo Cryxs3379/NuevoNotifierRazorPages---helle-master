@@ -203,7 +203,42 @@ public class EsendexInboxService : IInboxService
             }
 
             var bodyContent = await response.Content.ReadAsStringAsync(ct);
-            _logger.LogDebug("Successfully fetched body from URI, length: {Length}", bodyContent.Length);
+            
+            // Intentar parsear como XML para extraer bodytext
+            try
+            {
+                var xdoc = XDocument.Parse(bodyContent);
+                XNamespace ns = "http://api.esendex.com/ns/";
+                
+                // Buscar <bodytext> en el XML (puede estar en diferentes niveles)
+                var bodyTextElement = xdoc.Descendants(ns + "bodytext").FirstOrDefault();
+                if (bodyTextElement != null)
+                {
+                    // Extraer solo el texto, sin etiquetas XML
+                    var cleanText = bodyTextElement.Value;
+                    _logger.LogDebug("Successfully extracted bodytext from XML response, length: {Length}", cleanText.Length);
+                    return cleanText;
+                }
+                
+                // Si no hay bodytext, buscar <body> con texto
+                var bodyElement = xdoc.Descendants(ns + "body").FirstOrDefault();
+                if (bodyElement != null && !string.IsNullOrWhiteSpace(bodyElement.Value))
+                {
+                    var cleanText = bodyElement.Value;
+                    _logger.LogDebug("Successfully extracted body from XML response, length: {Length}", cleanText.Length);
+                    return cleanText;
+                }
+                
+                // Si no se encuentra estructura XML esperada, devolver el contenido tal cual
+                _logger.LogDebug("Body response is not XML or doesn't contain expected elements, returning raw content");
+            }
+            catch (Exception ex)
+            {
+                // Si no es XML válido o falla el parseo, devolver el contenido tal cual
+                _logger.LogDebug(ex, "Body response is not valid XML, returning raw content");
+            }
+            
+            _logger.LogDebug("Successfully fetched body from URI (raw), length: {Length}", bodyContent.Length);
             return bodyContent;
         }
         catch (UnauthorizedAccessException)
@@ -222,6 +257,32 @@ public class EsendexInboxService : IInboxService
         // Remove credentials from URL for logging
         var uri = new Uri(url);
         return $"{uri.Scheme}://{uri.Host}{uri.PathAndQuery}";
+    }
+
+    private string CleanTextContent(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return text;
+
+        // Si el texto parece ser XML, intentar extraer solo el contenido de texto
+        if (text.TrimStart().StartsWith("<"))
+        {
+            try
+            {
+                var xdoc = XDocument.Parse(text);
+                // Extraer todo el texto del documento sin etiquetas
+                return string.Join(" ", xdoc.Descendants()
+                    .Where(e => !e.HasElements)
+                    .Select(e => e.Value))
+                    .Trim();
+            }
+            catch
+            {
+                // Si no es XML válido, devolver tal cual
+            }
+        }
+
+        return text.Trim();
     }
 
     private MessagesResponse ParseEsendexResponse(string content, int page, int pageSize)
@@ -369,11 +430,12 @@ public class EsendexInboxService : IInboxService
 
         try
         {
-            // Intentar primero con inbox/messages/{id} (para inbound), luego messages/{id}
+            // Intentar en este orden: inbox/messages/{id}, messages/{id}, messageheaders/{id}
             var endpoints = new[]
             {
                 $"inbox/messages/{Uri.EscapeDataString(id)}",
-                $"messages/{Uri.EscapeDataString(id)}"
+                $"messages/{Uri.EscapeDataString(id)}",
+                $"messageheaders/{Uri.EscapeDataString(id)}"
             };
 
             foreach (var endpoint in endpoints)
@@ -404,6 +466,15 @@ public class EsendexInboxService : IInboxService
                     
                     if (parsedInfo != null)
                     {
+                        // Validar que el ID del mensaje devuelto coincida con el ID solicitado (case-insensitive)
+                        if (!string.Equals(parsedInfo.ActualId, id, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger.LogWarning(
+                                "Esendex returned message with different ID. Requested: {RequestedId}, Actual: {ActualId}, Endpoint: {Endpoint}. Trying next endpoint.",
+                                id, parsedInfo.ActualId, endpoint);
+                            continue; // Ignorar esta respuesta y probar siguiente endpoint
+                        }
+
                         string finalMessage;
                         string messageSource;
 
@@ -415,7 +486,8 @@ public class EsendexInboxService : IInboxService
                                 var bodyContent = await FetchBodyFromUri(parsedInfo.BodyUri, ct);
                                 if (!string.IsNullOrWhiteSpace(bodyContent))
                                 {
-                                    finalMessage = bodyContent;
+                                    // FetchBodyFromUri ya devuelve texto limpio, pero asegurémonos
+                                    finalMessage = CleanTextContent(bodyContent);
                                     messageSource = "bodyUri";
                                     _logger.LogInformation("Message {Id}: Fetched body from URI (length: {Length})", id, finalMessage.Length);
                                 }
@@ -437,8 +509,8 @@ public class EsendexInboxService : IInboxService
                         }
                         else if (!string.IsNullOrWhiteSpace(parsedInfo.BodyText))
                         {
-                            // Usar body inline
-                            finalMessage = parsedInfo.BodyText;
+                            // Usar body inline (limpiar cualquier etiqueta XML que pueda tener)
+                            finalMessage = CleanTextContent(parsedInfo.BodyText);
                             messageSource = "bodyInline";
                             _logger.LogInformation("Message {Id}: Using inline body (length: {Length})", id, finalMessage.Length);
                         }
@@ -459,8 +531,10 @@ public class EsendexInboxService : IInboxService
                             ReceivedUtc = parsedInfo.ReceivedUtc
                         };
 
-                        _logger.LogInformation("Retrieved full message for ID {Id} from {Endpoint}, source: {Source}, body length: {Length}", 
+                        _logger.LogDebug("Successfully retrieved message {Id} from endpoint {Endpoint}, body source: {Source}, body length: {Length}", 
                             id, endpoint, messageSource, finalMessage.Length);
+                        _logger.LogInformation("Message {Id} retrieved successfully from {Endpoint} using {Source}", 
+                            id, endpoint, messageSource);
                         return message;
                     }
                 }
@@ -490,6 +564,7 @@ public class EsendexInboxService : IInboxService
 
     private class ParsedMessageInfo
     {
+        public string ActualId { get; set; } = "";
         public string From { get; set; } = "";
         public string To { get; set; } = "";
         public string BodyText { get; set; } = "";
@@ -515,6 +590,11 @@ public class EsendexInboxService : IInboxService
                 return null;
             }
 
+            // Extraer el ID real del mensaje: primero del atributo "id", luego del elemento <id>
+            var actualId = msg.Attribute("id")?.Value 
+                          ?? msg.Element(ns + "id")?.Value 
+                          ?? "";
+
             var from = msg.Element(ns + "from")?.Element(ns + "phonenumber")?.Value ?? "";
             var to = msg.Element(ns + "to")?.Element(ns + "phonenumber")?.Value ?? "";
 
@@ -533,6 +613,7 @@ public class EsendexInboxService : IInboxService
 
             return new ParsedMessageInfo
             {
+                ActualId = actualId,
                 From = from,
                 To = to,
                 BodyText = bodyText,
