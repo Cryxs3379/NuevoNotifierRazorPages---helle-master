@@ -4,7 +4,9 @@ using NotifierAPI.Services;
 using NotifierAPI.Configuration;
 using NotifierAPI.Hubs;
 using NotifierAPI.Extensions;
+using NotifierAPI.Data;
 using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -79,6 +81,16 @@ builder.Services.AddHttpClient("MissedCallsAPI", c =>
     c.BaseAddress = new Uri(missedCallsBaseUrl);
 });
 builder.Services.AddScoped<IMissedCallsService, MissedCallsService>();
+
+// Database Context (SQL Server)
+var dbConnectionString = builder.Configuration.GetConnectionString("Db") 
+    ?? builder.Configuration["ConnectionStrings:Db"] 
+    ?? throw new InvalidOperationException("Connection string 'Db' is required");
+builder.Services.AddDbContext<NotificationsDbContext>(options =>
+    options.UseSqlServer(dbConnectionString));
+
+// SMS Message Repository
+builder.Services.AddScoped<SmsMessageRepository>();
 
 // EsendexMessageWatcher (BackgroundService) - solo si está habilitado
 if (watcherSettings.Enabled)

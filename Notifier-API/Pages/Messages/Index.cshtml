@@ -93,6 +93,13 @@
 {
     <div class="row">
         <div class="col-12">
+            <!-- Banner de error de BD (oculto inicialmente) -->
+            <div id="dbErrorBanner" class="alert alert-danger alert-dismissible fade" role="alert" style="display: none;">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <strong>Error de Base de Datos:</strong> <span id="dbErrorText"></span>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            
             <!-- Banner de mensajes nuevos (oculto inicialmente) -->
             <div id="newMessagesBanner" class="alert alert-info alert-dismissible fade" role="alert" style="display: none;">
                 <i class="bi bi-bell-fill"></i>
@@ -276,6 +283,13 @@
 }
 else if (Model.Messages != null)
 {
+    <!-- Banner de error de BD (oculto inicialmente) -->
+    <div id="dbErrorBanner" class="alert alert-danger alert-dismissible fade" role="alert" style="display: none;">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <strong>Error de Base de Datos:</strong> <span id="dbErrorText"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    
     <!-- Banner de mensajes nuevos (oculto inicialmente) -->
     <div id="newMessagesBanner" class="alert alert-info alert-dismissible fade" role="alert" style="display: none;">
         <i class="bi bi-bell-fill"></i>
@@ -689,6 +703,31 @@ else if (Model.Messages != null)
             console.log("New message received via SignalR:", message);
             insertNewMessage(message);
         });
+
+        // Manejar errores de base de datos
+        connection.on("DbError", (errorMessage) => {
+            console.error("Database error received via SignalR:", errorMessage);
+            showDbError(errorMessage);
+        });
+
+        // Función para mostrar error de BD
+        function showDbError(message) {
+            const banner = document.getElementById('dbErrorBanner');
+            const errorText = document.getElementById('dbErrorText');
+            if (banner && errorText) {
+                errorText.textContent = message;
+                banner.style.display = 'block';
+                banner.classList.add('show');
+                
+                // Auto-ocultar después de 10 segundos
+                setTimeout(() => {
+                    banner.classList.remove('show');
+                    setTimeout(() => {
+                        banner.style.display = 'none';
+                    }, 150);
+                }, 10000);
+            }
+        }
 
         // Iniciar conexión
         connection.start()

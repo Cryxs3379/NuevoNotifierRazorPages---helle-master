@@ -1,8 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.SignalR;
 using NotifierAPI.Services;
 using NotifierAPI.Models;
+using NotifierAPI.Configuration;
+using NotifierAPI.Hubs;
 using System.Text.RegularExpressions;
 
 namespace NotifierAPI.Pages.Messages;
@@ -11,11 +14,22 @@ public class MessagesReplyModel : PageModel
 {
     private readonly ISendService _sendService;
     private readonly ILogger<MessagesReplyModel> _logger;
+    private readonly SmsMessageRepository _smsRepository;
+    private readonly IHubContext<MessagesHub> _hubContext;
+    private readonly EsendexSettings _esendexSettings;
 
-    public MessagesReplyModel(ISendService sendService, ILogger<MessagesReplyModel> logger)
+    public MessagesReplyModel(
+        ISendService sendService, 
+        ILogger<MessagesReplyModel> logger,
+        SmsMessageRepository smsRepository,
+        IHubContext<MessagesHub> hubContext,
+        EsendexSettings esendexSettings)
     {
         _sendService = sendService;
         _logger = logger;
+        _smsRepository = smsRepository;
+        _hubContext = hubContext;
+        _esendexSettings = esendexSettings;
     }
 
     [BindProperty]
@@ -67,6 +81,35 @@ public class MessagesReplyModel : PageModel
             var result = await _sendService.SendAsync(To, Message, AccountRef, HttpContext.RequestAborted);
 
             _logger.LogInformation("Message sent successfully. ID={Id}", result.Id);
+
+            // Intentar guardar en BD (después del envío exitoso)
+            var originator = _esendexSettings.AccountReference ?? AccountRef ?? "UNKNOWN";
+            var saved = await _smsRepository.SaveSentAsync(
+                originator: originator,
+                recipient: To,
+                body: Message,
+                type: "SMS",
+                messageAt: result.SubmittedUtc,
+                cancellationToken: HttpContext.RequestAborted);
+            
+            if (!saved)
+            {
+                // Emitir evento SignalR para notificar el error
+                try
+                {
+                    await _hubContext.Clients.All.SendAsync("DbError", 
+                        $"No se pudo guardar mensaje enviado en BD: To={To}", 
+                        HttpContext.RequestAborted);
+                }
+                catch (Exception signalREx)
+                {
+                    _logger.LogWarning(signalREx, "Failed to emit DbError event via SignalR");
+                }
+                
+                // Mostrar advertencia al usuario (pero el mensaje sí se envió)
+                ErrorMessage = $"Mensaje enviado exitosamente, pero no se pudo guardar en la base de datos. ID: {result.Id}";
+                return Page();
+            }
 
             SuccessMessage = $"Mensaje enviado exitosamente a {To}. ID: {result.Id}";
             

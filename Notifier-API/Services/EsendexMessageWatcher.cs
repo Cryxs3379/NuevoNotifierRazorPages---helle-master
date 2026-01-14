@@ -145,6 +145,7 @@ public class EsendexMessageWatcher : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var inboxService = scope.ServiceProvider.GetRequiredService<IInboxService>();
         var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<MessagesHub>>();
+        var smsRepository = scope.ServiceProvider.GetService<SmsMessageRepository>();
 
         try
         {
@@ -179,6 +180,33 @@ public class EsendexMessageWatcher : BackgroundService
                         message.Id.Substring(0, Math.Min(8, message.Id.Length)) + "...", 
                         message.From, 
                         message.Message?.Length ?? 0);
+                    
+                    // Intentar guardar en BD (si el repositorio está disponible)
+                    if (smsRepository != null)
+                    {
+                        var saved = await smsRepository.SaveReceivedAsync(
+                            originator: message.From ?? string.Empty,
+                            recipient: message.To ?? string.Empty,
+                            body: message.Message ?? string.Empty,
+                            type: "SMS",
+                            messageAt: message.ReceivedUtc,
+                            cancellationToken: ct);
+                        
+                        if (!saved)
+                        {
+                            // Emitir evento SignalR para notificar el error
+                            try
+                            {
+                                await hubContext.Clients.All.SendAsync("DbError", 
+                                    $"No se pudo guardar mensaje recibido en BD: From={message.From}, To={message.To}", 
+                                    ct);
+                            }
+                            catch (Exception signalREx)
+                            {
+                                _logger.LogWarning(signalREx, "Failed to emit DbError event via SignalR");
+                            }
+                        }
+                    }
                 }
                 else
                 {
