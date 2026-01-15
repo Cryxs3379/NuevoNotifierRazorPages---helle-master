@@ -227,13 +227,20 @@ public static class WebApplicationExtensions
                 if (t < 1) t = 200;
                 if (t > 500) t = 500;
 
-                // Mensajes entre empresa y ese phone:
-                // - Inbound: Direction=0 AND Originator==phone
-                // - Outbound: Direction=1 AND Recipient==phone
+                // Normalizar phone para tolerar con/sin '+'
+                var phoneNormalized = phone.Trim().Replace(" ", "");
+                var phoneNoPlus = phoneNormalized.StartsWith("+") 
+                    ? phoneNormalized.Substring(1) 
+                    : phoneNormalized;
+                var phonePlus = "+" + phoneNoPlus;
+
+                // Mensajes entre empresa y ese phone (tolerante a formato):
+                // - Inbound: Direction=0 AND (Originator==phoneNoPlus OR Originator==phonePlus)
+                // - Outbound: Direction=1 AND (Recipient==phoneNoPlus OR Recipient==phonePlus)
                 var items = await dbContext.SmsMessages.AsNoTracking()
                     .Where(m => 
-                        (m.Direction == 0 && m.Originator == phone) ||
-                        (m.Direction == 1 && m.Recipient == phone))
+                        (m.Direction == 0 && (m.Originator == phoneNoPlus || m.Originator == phonePlus)) ||
+                        (m.Direction == 1 && (m.Recipient == phoneNoPlus || m.Recipient == phonePlus)))
                     .OrderBy(m => m.MessageAt) // ASC para orden natural del chat
                     .ThenBy(m => m.Id)
                     .Take(t)
@@ -275,24 +282,39 @@ public static class WebApplicationExtensions
                     return Results.BadRequest(new { error = "to y message son requeridos" });
                 }
 
-                // Validar formato E.164
-                if (!System.Text.RegularExpressions.Regex.IsMatch(body.To, @"^\+\d{6,15}$"))
+                // Normalizar número telefónico antes de validar
+                var toNormalized = body.To.Trim().Replace(" ", "");
+                
+                // Si empieza con "00", convertir a "+"
+                if (toNormalized.StartsWith("00") && toNormalized.Length > 2)
                 {
-                    return Results.BadRequest(new { error = "to debe estar en formato E.164 (+XXXXXXXX)" });
+                    toNormalized = "+" + toNormalized.Substring(2);
+                }
+                
+                // Si no empieza con '+', añadirlo
+                if (!toNormalized.StartsWith("+"))
+                {
+                    toNormalized = "+" + toNormalized;
                 }
 
-                // Enviar SMS
+                // Validar formato E.164 después de normalizar
+                if (!System.Text.RegularExpressions.Regex.IsMatch(toNormalized, @"^\+\d{6,15}$"))
+                {
+                    return Results.BadRequest(new { error = "to debe ser un número telefónico válido (formato E.164: +XXXXXXXX)" });
+                }
+
+                // Enviar SMS con número normalizado
                 var sendResult = await sendService.SendAsync(
-                    body.To, 
+                    toNormalized, 
                     body.Message, 
                     esendexSettings.AccountReference, 
                     ct);
 
-                // Guardar en SQL
+                // Guardar en SQL (usar número normalizado con '+')
                 var originator = esendexSettings.AccountReference ?? "UNKNOWN";
                 var savedId = await smsRepository.SaveSentAsync(
                     originator: originator,
-                    recipient: body.To,
+                    recipient: toNormalized, // Usar número normalizado
                     body: body.Message,
                     type: "SMS",
                     messageAt: sendResult.SubmittedUtc,
@@ -306,9 +328,9 @@ public static class WebApplicationExtensions
                         await hubContext.Clients.All.SendAsync("NewSentMessage", new
                         {
                             id = savedId.Value.ToString(),
-                            customerPhone = body.To, // Para outbound, customerPhone = Recipient
+                            customerPhone = toNormalized, // Para outbound, customerPhone = Recipient (normalizado)
                             originator = originator,
-                            recipient = body.To,
+                            recipient = toNormalized,
                             body = body.Message,
                             direction = 1,
                             messageAt = sendResult.SubmittedUtc.ToString("O")
@@ -404,14 +426,18 @@ public static class WebApplicationExtensions
 
                 // Obtener preview para cada conversación (último mensaje desde NotifierSmsMessages)
                 var phoneList = conversations.Select(c => c.CustomerPhone).ToList();
-                // Obtener preview para cada conversación
+                // Obtener preview para cada conversación (tolerante a formato con/sin '+')
                 var previews = new Dictionary<string, string>();
                 foreach (var phone in phoneList)
                 {
+                    // Normalizar phone para buscar en ambos formatos
+                    var phoneNoPlus = phone.StartsWith("+") ? phone.Substring(1) : phone;
+                    var phonePlus = "+" + phoneNoPlus;
+                    
                     var previewMessage = await dbContext.SmsMessages.AsNoTracking()
                         .Where(m => 
-                            (m.Direction == 0 && m.Originator == phone) ||
-                            (m.Direction == 1 && m.Recipient == phone))
+                            (m.Direction == 0 && (m.Originator == phoneNoPlus || m.Originator == phonePlus)) ||
+                            (m.Direction == 1 && (m.Recipient == phoneNoPlus || m.Recipient == phonePlus)))
                         .OrderByDescending(m => m.MessageAt)
                         .ThenByDescending(m => m.Id)
                         .Select(m => m.Body)
@@ -463,14 +489,30 @@ public static class WebApplicationExtensions
                 if (string.IsNullOrWhiteSpace(customerPhone))
                     return Results.BadRequest(new { error = "customerPhone es requerido" });
 
-                await conversationStateService.MarkReadAsync(customerPhone, ct);
+                // Normalizar phone para tolerar con/sin '+'
+                var phoneNormalized = customerPhone.Trim().Replace(" ", "");
+                var phoneNoPlus = phoneNormalized.StartsWith("+") 
+                    ? phoneNormalized.Substring(1) 
+                    : phoneNormalized;
+                var phonePlus = "+" + phoneNoPlus;
 
-                // Devolver estado actualizado
+                // Buscar ConversationState con cualquiera de los formatos
                 var state = await dbContext.ConversationStates.AsNoTracking()
-                    .FirstOrDefaultAsync(cs => cs.CustomerPhone == customerPhone, ct);
+                    .FirstOrDefaultAsync(cs => cs.CustomerPhone == phoneNoPlus || cs.CustomerPhone == phonePlus, ct);
 
                 if (state == null)
                     return Results.NotFound(new { error = "Conversación no encontrada" });
+
+                // Usar el CustomerPhone real del estado encontrado para MarkReadAsync
+                await conversationStateService.MarkReadAsync(state.CustomerPhone, ct);
+
+                // Obtener estado actualizado
+                var statePhone = state.CustomerPhone;
+                state = await dbContext.ConversationStates.AsNoTracking()
+                    .FirstOrDefaultAsync(cs => cs.CustomerPhone == statePhone, ct);
+
+                if (state == null)
+                    return Results.NotFound(new { error = "Conversación no encontrada después de actualizar" });
 
                 return Results.Ok(new
                 {
@@ -499,6 +541,7 @@ public static class WebApplicationExtensions
             string customerPhone,
             HttpRequest request,
             ConversationStateService conversationStateService,
+            NotificationsDbContext dbContext,
             CancellationToken ct) =>
         {
             try
@@ -512,10 +555,24 @@ public static class WebApplicationExtensions
                     return Results.BadRequest(new { error = "operatorName es requerido" });
                 }
 
+                // Normalizar phone para tolerar con/sin '+'
+                var phoneNormalized = customerPhone.Trim().Replace(" ", "");
+                var phoneNoPlus = phoneNormalized.StartsWith("+") 
+                    ? phoneNormalized.Substring(1) 
+                    : phoneNormalized;
+                var phonePlus = "+" + phoneNoPlus;
+
+                // Buscar ConversationState con cualquiera de los formatos
+                var existingState = await dbContext.ConversationStates.AsNoTracking()
+                    .FirstOrDefaultAsync(cs => cs.CustomerPhone == phoneNoPlus || cs.CustomerPhone == phonePlus, ct);
+
+                // Usar el CustomerPhone real del estado encontrado (o el normalizado sin '+' si no existe)
+                var phoneToUse = existingState?.CustomerPhone ?? phoneNoPlus;
+
                 var minutes = body.Minutes > 0 ? body.Minutes : 5; // Default 5 minutos
 
                 var result = await conversationStateService.ClaimAsync(
-                    customerPhone, 
+                    phoneToUse, 
                     body.OperatorName, 
                     minutes, 
                     ct);

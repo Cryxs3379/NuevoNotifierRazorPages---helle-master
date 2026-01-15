@@ -70,8 +70,15 @@ public class ApiClient
     {
         try
         {
+            // El endpoint ya es tolerante, pero normalizar para consistencia
+            var phoneNormalized = NotifierDesktop.Helpers.PhoneNormalizer.Normalize(phone);
+            if (string.IsNullOrEmpty(phoneNormalized))
+            {
+                phoneNormalized = phone; // Usar original si no se puede normalizar
+            }
+            
             var response = await _httpClient.GetAsync(
-                $"/api/v1/db/conversations/{Uri.EscapeDataString(phone)}/messages?take={take}",
+                $"/api/v1/db/conversations/{Uri.EscapeDataString(phoneNormalized)}/messages?take={take}",
                 ct);
             if (response.IsSuccessStatusCode)
             {

@@ -1,5 +1,6 @@
 using NotifierDesktop.Controllers;
 using NotifierDesktop.Controls;
+using NotifierDesktop.Helpers;
 using NotifierDesktop.Models;
 using NotifierDesktop.Services;
 using NotifierDesktop.ViewModels;
@@ -353,27 +354,35 @@ public partial class MainForm : Form
 
         _selectedPhone = phone;
 
-        // Claim conversación
-        if (_apiClient != null && !string.IsNullOrWhiteSpace(_settings.OperatorName))
+        // Normalizar phone para API (pero mantener original para display)
+        var phoneNormalized = PhoneNormalizer.Normalize(phone);
+        if (string.IsNullOrEmpty(phoneNormalized))
         {
-            await _apiClient.ClaimConversationAsync(phone, _settings.OperatorName, 5);
+            ShowError($"Número telefónico inválido: {phone}");
+            return;
         }
 
-        // Cargar chat
+        // Claim conversación (usar phone normalizado)
+        if (_apiClient != null && !string.IsNullOrWhiteSpace(_settings.OperatorName))
+        {
+            await _apiClient.ClaimConversationAsync(phoneNormalized, _settings.OperatorName, 5);
+        }
+
+        // Cargar chat (usar phone normalizado para API, pero el endpoint ya es tolerante)
         if (_chatController != null)
         {
-            await _chatController.LoadChatAsync(phone);
+            await _chatController.LoadChatAsync(phoneNormalized);
             RefreshChat();
         }
 
-        // Marcar como leído
+        // Marcar como leído (usar phone normalizado)
         if (_apiClient != null && _isWindowFocused)
         {
-            await _apiClient.MarkConversationReadAsync(phone);
+            await _apiClient.MarkConversationReadAsync(phoneNormalized);
         }
 
-        // Actualizar header
-        UpdateChatHeader(phone);
+        // Actualizar header (mostrar número normalizado)
+        UpdateChatHeader(phoneNormalized);
         _btnSend.Enabled = true;
     }
 
@@ -441,12 +450,21 @@ public partial class MainForm : Form
             return;
         }
 
+        // Normalizar número telefónico antes de enviar
+        var phoneNormalized = PhoneNormalizer.Normalize(_selectedPhone);
+        if (string.IsNullOrEmpty(phoneNormalized))
+        {
+            ShowError($"Número telefónico inválido: {_selectedPhone}. No se puede enviar el mensaje.");
+            return;
+        }
+
         _btnSend.Enabled = false;
         _btnSend.Text = "Enviando...";
 
         try
         {
-            var response = await _apiClient.SendMessageAsync(_selectedPhone, messageText);
+            // Enviar con número normalizado
+            var response = await _apiClient.SendMessageAsync(phoneNormalized, messageText);
             if (response?.Success == true)
             {
                 _txtMessage.Clear();
