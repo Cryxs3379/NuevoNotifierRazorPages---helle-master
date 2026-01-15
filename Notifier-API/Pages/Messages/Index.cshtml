@@ -208,19 +208,19 @@
                                                     title="Ver mensaje completo">
                                                 <i class="bi bi-eye-fill"></i> Ver
                                             </button>
+                                            @{
+                                                var replyTo = Model.Direction == "inbound" ? message.From : message.To;
+                                                if (!string.IsNullOrWhiteSpace(replyTo) && !replyTo.StartsWith("+"))
+                                                {
+                                                    replyTo = "+" + replyTo;
+                                                }
+                                            }
                                             <a asp-page="/Messages/Reply" 
-                                               asp-route-to="@((!string.IsNullOrWhiteSpace(message.From) && message.From.StartsWith("+") ? message.From : ("+" + message.From)))" 
+                                               asp-route-to="@replyTo" 
                                                class="btn btn-sm btn-outline-primary ms-1"
                                                title="Responder">
                                                 <i class="bi bi-reply-fill"></i> Responder
                                             </a>
-                                            @if (Model.Direction.Equals("inbound", StringComparison.OrdinalIgnoreCase))
-                                            {
-                                                <button type="button" class="btn btn-sm btn-outline-danger ms-1" 
-                                                        data-id="@message.Id" onclick="deleteMessage(this)">
-                                                    <i class="bi bi-trash"></i> Eliminar
-                                                </button>
-                                            }
                                         </td>
                                     </tr>
                                 }
@@ -451,11 +451,12 @@ else if (Model.Messages != null)
             const receivedUtc = message.receivedUtc || new Date().toISOString();
             const idShort = id.substring(0, Math.min(8, id.length)) + '...';
             
-            // Construir URL de responder
-            const replyTo = from.startsWith('+') ? from : '+' + from;
-            const replyUrl = `/Messages/Reply?to=${encodeURIComponent(replyTo)}`;
+            // Construir URL de responder (inbound: responder a From, outbound: responder a To)
+            const replyTo = (isInbound ? from : to);
+            const replyToNormalized = replyTo.startsWith('+') ? replyTo : '+' + replyTo;
+            const replyUrl = `/Messages/Reply?to=${encodeURIComponent(replyToNormalized)}`;
             
-            // Botones según dirección
+            // Botones
             let actionButtons = `
                 <button type="button" class="btn btn-sm btn-outline-info" 
                         data-id="${id}" 
@@ -468,14 +469,6 @@ else if (Model.Messages != null)
                    title="Responder">
                     <i class="bi bi-reply-fill"></i> Responder
                 </a>`;
-            
-            if (isInbound) {
-                actionButtons += `
-                    <button type="button" class="btn btn-sm btn-outline-danger ms-1" 
-                            data-id="${id}" onclick="deleteMessage(this)">
-                        <i class="bi bi-trash"></i> Eliminar
-                    </button>`;
-            }
             
             return `
                 <tr data-message-id="${id}" class="table-warning">
@@ -808,7 +801,7 @@ else if (Model.Messages != null)
             document.getElementById('messageError').style.display = 'none';
 
             try {
-                const res = await fetch(`/api/v1/messages/${encodeURIComponent(id)}`);
+                const res = await fetch(`/api/v1/db/messages/${encodeURIComponent(id)}`);
                 
                 if (res.ok) {
                     const message = await res.json();

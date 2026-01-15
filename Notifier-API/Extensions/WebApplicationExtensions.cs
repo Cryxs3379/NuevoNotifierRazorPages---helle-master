@@ -1,6 +1,8 @@
+using Microsoft.EntityFrameworkCore;
 using NotifierAPI.Models;
 using NotifierAPI.Services;
 using NotifierAPI.Hubs;
+using NotifierAPI.Data;
 
 namespace NotifierAPI.Extensions;
 
@@ -97,6 +99,35 @@ public static class WebApplicationExtensions
                 : Results.Problem(statusCode: 502, title: "No se pudo eliminar en Esendex");
         })
         .WithName("DeleteMessage")
+        .WithTags("Messages");
+
+        // DB-first message endpoint (para modal "Ver")
+        app.MapGet("/api/v1/db/messages/{id:long}", async (long id, NotificationsDbContext dbContext, CancellationToken ct) =>
+        {
+            try
+            {
+                var message = await dbContext.SmsMessages.AsNoTracking()
+                    .FirstOrDefaultAsync(m => m.Id == id, ct);
+
+                if (message == null)
+                    return Results.NotFound(new { error = "Mensaje no encontrado" });
+
+                // Mapear al formato que espera el JS del modal
+                return Results.Ok(new
+                {
+                    from = message.Originator,
+                    to = message.Recipient,
+                    message = message.Body,
+                    receivedUtc = message.MessageAt.ToString("O") // ISO8601
+                });
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogError(ex, "Error obteniendo mensaje {Id} desde SQL", id);
+                return Results.Problem(statusCode: 500, title: "Error al obtener el mensaje desde la base de datos");
+            }
+        })
+        .WithName("GetDbMessageById")
         .WithTags("Messages");
 
         // Calls endpoints

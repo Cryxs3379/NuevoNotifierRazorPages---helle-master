@@ -1,18 +1,20 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 using NotifierAPI.Services;
 using NotifierAPI.Models;
+using NotifierAPI.Data;
 
 namespace NotifierAPI.Pages.Messages;
 
 public class MessagesIndexModel : PageModel
 {
-    private readonly IInboxService _inboxService;
+    private readonly NotificationsDbContext _dbContext;
     private readonly ILogger<MessagesIndexModel> _logger;
 
-    public MessagesIndexModel(IInboxService inboxService, ILogger<MessagesIndexModel> logger)
+    public MessagesIndexModel(NotificationsDbContext dbContext, ILogger<MessagesIndexModel> logger)
     {
-        _inboxService = inboxService;
+        _dbContext = dbContext;
         _logger = logger;
     }
 
@@ -54,34 +56,54 @@ public class MessagesIndexModel : PageModel
             if (PageSize < 10) PageSize = 10;
             if (PageSize > 200) PageSize = 200;
 
-            _logger.LogInformation("Fetching messages: direction={Direction}, page={Page}, pageSize={PageSize}, accountRef={AccountRef}", 
-                Direction, CurrentPage, PageSize, AccountRef);
+            // Mapear Direction a byte
+            byte directionByte = Direction == "inbound" ? (byte)0 : (byte)1;
 
-            Messages = await _inboxService.GetMessagesAsync(
-                Direction, 
-                CurrentPage, 
-                PageSize, 
-                AccountRef, 
-                HttpContext.RequestAborted);
+            _logger.LogInformation("Fetching messages from SQL: direction={Direction} (byte={DirectionByte}), page={Page}, pageSize={PageSize}", 
+                Direction, directionByte, CurrentPage, PageSize);
 
-            _logger.LogInformation("Retrieved {Count} messages out of {Total}", 
-                Messages?.Items?.Count ?? 0, 
-                Messages?.Total ?? 0);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            _logger.LogError(ex, "Authentication failed");
-            ErrorMessage = "Error de autenticación con Esendex. Verifica las credenciales.";
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "HTTP request failed");
-            ErrorMessage = "No se pudo conectar con el servicio Esendex. Inténtalo más tarde.";
+            // Consultar SQL
+            var query = _dbContext.SmsMessages.AsNoTracking()
+                .Where(m => m.Direction == directionByte)
+                .OrderByDescending(m => m.MessageAt)
+                .ThenByDescending(m => m.Id);
+
+            // Contar total
+            var totalCount = await query.CountAsync(HttpContext.RequestAborted);
+
+            // Aplicar paginación
+            var skip = (CurrentPage - 1) * PageSize;
+            var dbMessages = await query
+                .Skip(skip)
+                .Take(PageSize)
+                .ToListAsync(HttpContext.RequestAborted);
+
+            // Mapear a MessageDto
+            var mappedItems = dbMessages.Select(m => new MessageDto
+            {
+                Id = m.Id.ToString(),
+                From = m.Originator,
+                To = m.Recipient,
+                Message = m.Body,
+                ReceivedUtc = m.MessageAt
+            }).ToList();
+
+            Messages = new MessagesResponse
+            {
+                Items = mappedItems,
+                Page = CurrentPage,
+                PageSize = PageSize,
+                Total = totalCount
+            };
+
+            _logger.LogInformation("Retrieved {Count} messages out of {Total} from SQL", 
+                mappedItems.Count, 
+                totalCount);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error");
-            ErrorMessage = "Ocurrió un error inesperado al cargar los mensajes.";
+            _logger.LogError(ex, "Error loading messages from SQL");
+            ErrorMessage = "Ocurrió un error al cargar los mensajes desde la base de datos.";
         }
     }
 }
