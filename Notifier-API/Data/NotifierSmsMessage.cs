@@ -10,4 +10,5 @@ public class NotifierSmsMessage
     public byte Direction { get; set; } // 0 = Received, 1 = Sent
     public DateTime MessageAt { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? ProviderMessageId { get; set; }
 }

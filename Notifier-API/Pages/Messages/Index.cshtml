@@ -100,6 +100,13 @@
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
             
+            <!-- Banner de error de borrado en Esendex (oculto inicialmente) -->
+            <div id="esendexDeleteErrorBanner" class="alert alert-warning alert-dismissible fade" role="alert" style="display: none;">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <strong>Advertencia:</strong> <span id="esendexDeleteErrorText"></span>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            
             <!-- Banner de mensajes nuevos (oculto inicialmente) -->
             <div id="newMessagesBanner" class="alert alert-info alert-dismissible fade" role="alert" style="display: none;">
                 <i class="bi bi-bell-fill"></i>
@@ -287,6 +294,13 @@ else if (Model.Messages != null)
     <div id="dbErrorBanner" class="alert alert-danger alert-dismissible fade" role="alert" style="display: none;">
         <i class="bi bi-exclamation-triangle-fill"></i>
         <strong>Error de Base de Datos:</strong> <span id="dbErrorText"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    
+    <!-- Banner de error de borrado en Esendex (oculto inicialmente) -->
+    <div id="esendexDeleteErrorBanner" class="alert alert-warning alert-dismissible fade" role="alert" style="display: none;">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <strong>Advertencia:</strong> <span id="esendexDeleteErrorText"></span>
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
     
@@ -710,6 +724,12 @@ else if (Model.Messages != null)
             showDbError(errorMessage);
         });
 
+        // Manejar errores de borrado en Esendex
+        connection.on("EsendexDeleteError", (errorMessage) => {
+            console.warn("Esendex delete error received via SignalR:", errorMessage);
+            showEsendexDeleteError(errorMessage);
+        });
+
         // Función para mostrar error de BD
         function showDbError(message) {
             const banner = document.getElementById('dbErrorBanner');
@@ -726,6 +746,25 @@ else if (Model.Messages != null)
                         banner.style.display = 'none';
                     }, 150);
                 }, 10000);
+            }
+        }
+
+        // Función para mostrar error de borrado en Esendex
+        function showEsendexDeleteError(message) {
+            const banner = document.getElementById('esendexDeleteErrorBanner');
+            const errorText = document.getElementById('esendexDeleteErrorText');
+            if (banner && errorText) {
+                errorText.textContent = message;
+                banner.style.display = 'block';
+                banner.classList.add('show');
+                
+                // Auto-ocultar después de 15 segundos (más tiempo porque es warning, no error crítico)
+                setTimeout(() => {
+                    banner.classList.remove('show');
+                    setTimeout(() => {
+                        banner.style.display = 'none';
+                    }, 150);
+                }, 15000);
             }
         }
 

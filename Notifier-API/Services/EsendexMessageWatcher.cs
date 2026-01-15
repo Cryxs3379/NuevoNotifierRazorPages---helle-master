@@ -79,6 +79,55 @@ public class EsendexMessageWatcher : BackgroundService
         _logger.LogInformation("EsendexMessageWatcher stopped");
     }
 
+    /// <summary>
+    /// Intenta borrar un mensaje de Esendex con reintentos y backoff exponencial
+    /// </summary>
+    private async Task<bool> DeleteFromEsendexWithRetry(
+        IInboxService inboxService,
+        IHubContext<MessagesHub> hubContext,
+        string messageId,
+        CancellationToken ct)
+    {
+        var delays = new[] { 500, 1500, 3500 }; // ms
+        
+        for (int attempt = 0; attempt < delays.Length; attempt++)
+        {
+            try
+            {
+                var success = await inboxService.DeleteMessageAsync(messageId, ct);
+                
+                if (success)
+                {
+                    _logger.LogDebug("Successfully deleted message from Esendex (ProviderMessageId: {ProviderMessageId}, Attempt: {Attempt})", 
+                        messageId, attempt + 1);
+                    return true;
+                }
+                
+                // Si no fue exitoso y no es el último intento, esperar antes de reintentar
+                if (attempt < delays.Length - 1)
+                {
+                    _logger.LogDebug("Delete attempt {Attempt} failed, retrying in {Delay}ms (ProviderMessageId: {ProviderMessageId})", 
+                        attempt + 1, delays[attempt], messageId);
+                    await Task.Delay(delays[attempt], ct);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error deleting message from Esendex (ProviderMessageId: {ProviderMessageId}, Attempt: {Attempt})", 
+                    messageId, attempt + 1);
+                
+                // Si no es el último intento, esperar antes de reintentar
+                if (attempt < delays.Length - 1)
+                {
+                    await Task.Delay(delays[attempt], ct);
+                }
+            }
+        }
+        
+        // Todos los intentos fallaron
+        return false;
+    }
+
     private void PurgeExpiredCacheEntries()
     {
         var now = DateTime.UtcNow;
@@ -184,21 +233,65 @@ public class EsendexMessageWatcher : BackgroundService
                     // Intentar guardar en BD (si el repositorio está disponible)
                     if (smsRepository != null)
                     {
-                        var saved = await smsRepository.SaveReceivedAsync(
+                        var saveResult = await smsRepository.SaveReceivedAsync(
                             originator: message.From ?? string.Empty,
                             recipient: message.To ?? string.Empty,
                             body: message.Message ?? string.Empty,
                             type: "SMS",
                             messageAt: message.ReceivedUtc,
+                            providerMessageId: message.Id,
                             cancellationToken: ct);
                         
-                        if (!saved)
+                        if (saveResult.IsSuccess)
                         {
-                            // Emitir evento SignalR para notificar el error
+                            // Guardado exitoso o duplicado detectado - intentar borrar de Esendex
+                            if (saveResult.IsDuplicate)
+                            {
+                                _logger.LogInformation("Duplicate inbound ignored (ProviderMessageId: {ProviderMessageId}), deleting from Esendex inbox", 
+                                    message.Id);
+                            }
+                            else
+                            {
+                                _logger.LogInformation("Saved OK, deleting from Esendex inbox (ProviderMessageId: {ProviderMessageId})", 
+                                    message.Id);
+                            }
+                            
+                            // Intentar borrar de Esendex con reintentos
+                            var deleteSuccess = await DeleteFromEsendexWithRetry(
+                                inboxService, 
+                                hubContext, 
+                                message.Id, 
+                                ct);
+                            
+                            if (!deleteSuccess)
+                            {
+                                _logger.LogWarning("Saved OK but failed deleting after retries (ProviderMessageId: {ProviderMessageId})", 
+                                    message.Id);
+                                
+                                // Emitir evento SignalR para notificar el error de borrado
+                                try
+                                {
+                                    await hubContext.Clients.All.SendAsync("EsendexDeleteError", 
+                                        $"No se pudo eliminar mensaje de Esendex después de guardarlo en BD. ID: {message.Id.Substring(0, Math.Min(8, message.Id.Length))}...", 
+                                        ct);
+                                }
+                                catch (Exception signalREx)
+                                {
+                                    _logger.LogWarning(signalREx, "Failed to emit EsendexDeleteError event via SignalR");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Error al guardar en BD - NO borrar de Esendex para no perderlo
+                            _logger.LogError("Failed saving to DB, not deleting from Esendex (ProviderMessageId: {ProviderMessageId}, Error: {Error})", 
+                                message.Id, saveResult.Error);
+                            
+                            // Emitir evento SignalR para notificar el error de BD
                             try
                             {
                                 await hubContext.Clients.All.SendAsync("DbError", 
-                                    $"No se pudo guardar mensaje recibido en BD: From={message.From}, To={message.To}", 
+                                    $"No se pudo guardar mensaje recibido en BD: From={message.From}, To={message.To}, Error: {saveResult.Error}", 
                                     ct);
                             }
                             catch (Exception signalREx)

@@ -64,6 +64,12 @@ public class NotificationsDbContext : DbContext
                 .HasColumnType("datetime2(0)")
                 .IsRequired()
                 .HasDefaultValueSql("SYSUTCDATETIME()");
+            
+            entity.Property(e => e.ProviderMessageId)
+                .HasColumnName("ProviderMessageId")
+                .HasColumnType("nvarchar(100)")
+                .HasMaxLength(100)
+                .IsRequired(false);
         });
     }
 }
