@@ -119,6 +119,75 @@ public class ApiClient
         }
     }
 
+    public async Task<ConversationsResponse?> GetConversationsAsync(
+        string? q,
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var queryParams = $"page={page}&pageSize={pageSize}";
+            if (!string.IsNullOrWhiteSpace(q))
+            {
+                queryParams += $"&q={Uri.EscapeDataString(q)}";
+            }
+
+            var response = await _httpClient.GetAsync($"/api/v1/conversations?{queryParams}", ct);
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadFromJsonAsync<ConversationsResponse>(ct);
+            }
+        }
+        catch
+        {
+            // Retornar null en caso de error
+        }
+        return null;
+    }
+
+    public async Task<bool> MarkConversationReadAsync(string phone, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsync(
+                $"/api/v1/conversations/{Uri.EscapeDataString(phone)}/read",
+                null,
+                ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<ClaimResponse?> ClaimConversationAsync(
+        string phone,
+        string operatorName,
+        int minutes,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var request = new { operatorName, minutes };
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/v1/conversations/{Uri.EscapeDataString(phone)}/claim",
+                request,
+                ct);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadFromJsonAsync<ClaimResponse>(ct);
+            }
+        }
+        catch
+        {
+            // Retornar null en caso de error
+        }
+        return null;
+    }
+
     public void Dispose()
     {
         _httpClient?.Dispose();

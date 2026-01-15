@@ -30,7 +30,7 @@ static class Program
         }
 
         // Crear y mostrar formulario principal
-        var mainForm = new FormMain(settings);
+        var mainForm = new MainForm(settings);
         
         // Añadir menú para configuración
         var menuStrip = new MenuStrip();

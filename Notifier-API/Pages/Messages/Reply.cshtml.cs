@@ -117,6 +117,7 @@ public class MessagesReplyModel : PageModel
                 await _hubContext.Clients.All.SendAsync("NewSentMessage", new
                 {
                     id = savedId.Value.ToString(),
+                    customerPhone = To,
                     originator = originator,
                     recipient = To,
                     body = Message,

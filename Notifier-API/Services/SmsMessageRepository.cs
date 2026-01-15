@@ -10,13 +10,17 @@ public class SmsMessageRepository
 {
     private readonly NotificationsDbContext _dbContext;
     private readonly ILogger<SmsMessageRepository> _logger;
+    private readonly ConversationStateService? _conversationStateService;
 
     public SmsMessageRepository(
         NotificationsDbContext dbContext,
-        ILogger<SmsMessageRepository> logger)
+        ILogger<SmsMessageRepository> logger,
+        IServiceProvider? serviceProvider = null)
     {
         _dbContext = dbContext;
         _logger = logger;
+        // Obtener ConversationStateService opcionalmente desde el service provider
+        _conversationStateService = serviceProvider?.GetService<ConversationStateService>();
     }
 
     /// <summary>
@@ -50,6 +54,20 @@ public class SmsMessageRepository
 
             _logger.LogDebug("Saved received SMS message to database. Originator: {Originator}, Recipient: {Recipient}, ProviderMessageId: {ProviderMessageId}", 
                 originator, recipient, providerMessageId);
+            
+            // Actualizar ConversationState (opcional, no debe romper si falla)
+            if (_conversationStateService != null && !string.IsNullOrWhiteSpace(originator))
+            {
+                try
+                {
+                    await _conversationStateService.UpsertInboundAsync(originator, message.MessageAt, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to update ConversationState for inbound message. Originator: {Originator}", originator);
+                    // No lanzar excepción, el mensaje ya se guardó correctamente
+                }
+            }
             
             return new SaveResult(IsSuccess: true, IsDuplicate: false, Error: null);
         }
@@ -129,6 +147,20 @@ public class SmsMessageRepository
 
             _logger.LogDebug("Saved sent SMS message to database. Id: {Id}, Originator: {Originator}, Recipient: {Recipient}", 
                 message.Id, originator, recipient);
+            
+            // Actualizar ConversationState (opcional, no debe romper si falla)
+            if (_conversationStateService != null && !string.IsNullOrWhiteSpace(recipient))
+            {
+                try
+                {
+                    await _conversationStateService.UpsertOutboundAsync(recipient, message.MessageAt, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to update ConversationState for outbound message. Recipient: {Recipient}", recipient);
+                    // No lanzar excepción, el mensaje ya se guardó correctamente
+                }
+            }
             
             return message.Id;
         }

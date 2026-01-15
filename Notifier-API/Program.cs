@@ -89,8 +89,15 @@ var dbConnectionString = builder.Configuration.GetConnectionString("Db")
 builder.Services.AddDbContext<NotificationsDbContext>(options =>
     options.UseSqlServer(dbConnectionString));
 
-// SMS Message Repository
-builder.Services.AddScoped<SmsMessageRepository>();
+// SMS Message Repository (con acceso a ConversationStateService opcional)
+builder.Services.AddScoped<SmsMessageRepository>(sp => 
+    new SmsMessageRepository(
+        sp.GetRequiredService<NotificationsDbContext>(),
+        sp.GetRequiredService<ILogger<SmsMessageRepository>>(),
+        sp));
+
+// Conversation State Service
+builder.Services.AddScoped<ConversationStateService>();
 
 // EsendexMessageWatcher (BackgroundService) - solo si está habilitado
 if (watcherSettings.Enabled)

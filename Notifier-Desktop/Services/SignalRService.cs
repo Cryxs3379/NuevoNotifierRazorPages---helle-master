@@ -150,6 +150,19 @@ public class SignalRService : IDisposable
         if (recipientProp != null)
             dtoResult.Recipient = recipientProp.GetValue(obj)?.ToString() ?? string.Empty;
 
+        var customerPhoneProp = type.GetProperty("customerPhone") ?? type.GetProperty("CustomerPhone");
+        if (customerPhoneProp != null)
+            dtoResult.CustomerPhone = customerPhoneProp.GetValue(obj)?.ToString() ?? string.Empty;
+        else
+        {
+            // Si no viene customerPhone, inferirlo desde direction
+            // Para inbound: customerPhone = originator, para outbound: customerPhone = recipient
+            if (dtoResult.Direction == 0)
+                dtoResult.CustomerPhone = dtoResult.Originator;
+            else
+                dtoResult.CustomerPhone = dtoResult.Recipient;
+        }
+
         var bodyProp = type.GetProperty("body") ?? type.GetProperty("Body") ?? type.GetProperty("message") ?? type.GetProperty("Message");
         if (bodyProp != null)
             dtoResult.Body = bodyProp.GetValue(obj)?.ToString() ?? string.Empty;

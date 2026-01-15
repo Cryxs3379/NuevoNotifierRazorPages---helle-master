@@ -3,6 +3,7 @@ namespace NotifierDesktop.Models;
 public class MessageDto
 {
     public long Id { get; set; }
+    public string CustomerPhone { get; set; } = string.Empty; // Para WinForms
     public string Originator { get; set; } = string.Empty;
     public string Recipient { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
@@ -36,4 +37,34 @@ public class HealthResponse
 {
     public string Status { get; set; } = string.Empty;
     public bool EsendexConfigured { get; set; }
+}
+
+public class ConversationDto
+{
+    public string CustomerPhone { get; set; } = string.Empty;
+    public DateTime? LastInboundAt { get; set; }
+    public DateTime? LastOutboundAt { get; set; }
+    public DateTime? LastReadInboundAt { get; set; }
+    public bool PendingReply { get; set; }
+    public bool Unread { get; set; }
+    public string? AssignedTo { get; set; }
+    public DateTime? AssignedUntil { get; set; }
+    public DateTime? LastMessageAt { get; set; }
+    public string Preview { get; set; } = string.Empty;
+}
+
+public class ConversationsResponse
+{
+    public List<ConversationDto> Items { get; set; } = new();
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int Total { get; set; }
+}
+
+public class ClaimResponse
+{
+    public bool Success { get; set; }
+    public bool WasAlreadyAssigned { get; set; }
+    public string? AssignedTo { get; set; }
+    public DateTime? AssignedUntil { get; set; }
 }

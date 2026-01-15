@@ -306,6 +306,7 @@ public static class WebApplicationExtensions
                         await hubContext.Clients.All.SendAsync("NewSentMessage", new
                         {
                             id = savedId.Value.ToString(),
+                            customerPhone = body.To, // Para outbound, customerPhone = Recipient
                             originator = originator,
                             recipient = body.To,
                             body = body.Message,
@@ -343,6 +344,198 @@ public static class WebApplicationExtensions
         })
         .WithName("SendDbMessage")
         .WithTags("Messages");
+
+        // Conversations endpoints
+        app.MapGet("/api/v1/conversations", async (
+            string? q,
+            int? page,
+            int? pageSize,
+            NotificationsDbContext dbContext,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                var p = page ?? 1;
+                if (p < 1) p = 1;
+
+                var ps = pageSize ?? 50;
+                if (ps < 10) ps = 10;
+                if (ps > 200) ps = 200;
+
+                // Query base de ConversationState
+                var query = dbContext.ConversationStates.AsNoTracking();
+
+                // Filtro por teléfono si viene
+                if (!string.IsNullOrWhiteSpace(q))
+                {
+                    query = query.Where(cs => cs.CustomerPhone.Contains(q));
+                }
+
+                // Calcular campos calculados y preview
+                var conversationsQuery = query.Select(cs => new
+                {
+                    cs.CustomerPhone,
+                    cs.LastInboundAt,
+                    cs.LastOutboundAt,
+                    cs.LastReadInboundAt,
+                    cs.AssignedTo,
+                    cs.AssignedUntil,
+                    // Calcular pendingReply y unread según reglas
+                    PendingReply = cs.LastInboundAt != null && 
+                        (cs.LastOutboundAt == null || cs.LastOutboundAt < cs.LastInboundAt),
+                    Unread = cs.LastInboundAt != null && 
+                        (cs.LastReadInboundAt == null || cs.LastReadInboundAt < cs.LastInboundAt),
+                    // lastMessageAt = MAX(LastInboundAt, LastOutboundAt)
+                    LastMessageAt = cs.LastInboundAt.HasValue && cs.LastOutboundAt.HasValue
+                        ? (cs.LastInboundAt > cs.LastOutboundAt ? cs.LastInboundAt : cs.LastOutboundAt)
+                        : (cs.LastInboundAt ?? cs.LastOutboundAt)
+                });
+
+                // Contar total
+                var total = await conversationsQuery.CountAsync(ct);
+
+                // Obtener conversaciones paginadas
+                var conversations = await conversationsQuery
+                    .OrderByDescending(c => c.LastMessageAt)
+                    .ThenByDescending(c => c.CustomerPhone)
+                    .Skip((p - 1) * ps)
+                    .Take(ps)
+                    .ToListAsync(ct);
+
+                // Obtener preview para cada conversación (último mensaje desde NotifierSmsMessages)
+                var phoneList = conversations.Select(c => c.CustomerPhone).ToList();
+                // Obtener preview para cada conversación
+                var previews = new Dictionary<string, string>();
+                foreach (var phone in phoneList)
+                {
+                    var previewMessage = await dbContext.SmsMessages.AsNoTracking()
+                        .Where(m => 
+                            (m.Direction == 0 && m.Originator == phone) ||
+                            (m.Direction == 1 && m.Recipient == phone))
+                        .OrderByDescending(m => m.MessageAt)
+                        .ThenByDescending(m => m.Id)
+                        .Select(m => m.Body)
+                        .FirstOrDefaultAsync(ct);
+                    
+                    previews[phone] = previewMessage ?? string.Empty;
+                }
+
+                // Construir respuesta
+                var items = conversations.Select(c => new
+                {
+                    customerPhone = c.CustomerPhone,
+                    lastInboundAt = c.LastInboundAt,
+                    lastOutboundAt = c.LastOutboundAt,
+                    lastReadInboundAt = c.LastReadInboundAt,
+                    pendingReply = c.PendingReply,
+                    unread = c.Unread,
+                    assignedTo = c.AssignedTo,
+                    assignedUntil = c.AssignedUntil,
+                    lastMessageAt = c.LastMessageAt,
+                    preview = previews.GetValueOrDefault(c.CustomerPhone, string.Empty)
+                }).ToList();
+
+                return Results.Ok(new
+                {
+                    items,
+                    page = p,
+                    pageSize = ps,
+                    total
+                });
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogError(ex, "Error obteniendo conversaciones");
+                return Results.Problem(statusCode: 500, title: "Error al obtener las conversaciones");
+            }
+        })
+        .WithName("GetConversations")
+        .WithTags("Conversations");
+
+        app.MapPost("/api/v1/conversations/{customerPhone}/read", async (
+            string customerPhone,
+            ConversationStateService conversationStateService,
+            NotificationsDbContext dbContext,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(customerPhone))
+                    return Results.BadRequest(new { error = "customerPhone es requerido" });
+
+                await conversationStateService.MarkReadAsync(customerPhone, ct);
+
+                // Devolver estado actualizado
+                var state = await dbContext.ConversationStates.AsNoTracking()
+                    .FirstOrDefaultAsync(cs => cs.CustomerPhone == customerPhone, ct);
+
+                if (state == null)
+                    return Results.NotFound(new { error = "Conversación no encontrada" });
+
+                return Results.Ok(new
+                {
+                    customerPhone = state.CustomerPhone,
+                    lastInboundAt = state.LastInboundAt,
+                    lastOutboundAt = state.LastOutboundAt,
+                    lastReadInboundAt = state.LastReadInboundAt,
+                    pendingReply = state.LastInboundAt != null && 
+                        (state.LastOutboundAt == null || state.LastOutboundAt < state.LastInboundAt),
+                    unread = state.LastInboundAt != null && 
+                        (state.LastReadInboundAt == null || state.LastReadInboundAt < state.LastInboundAt),
+                    assignedTo = state.AssignedTo,
+                    assignedUntil = state.AssignedUntil
+                });
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogError(ex, "Error marcando conversación como leída: {Phone}", customerPhone);
+                return Results.Problem(statusCode: 500, title: "Error al marcar la conversación como leída");
+            }
+        })
+        .WithName("MarkConversationRead")
+        .WithTags("Conversations");
+
+        app.MapPost("/api/v1/conversations/{customerPhone}/claim", async (
+            string customerPhone,
+            HttpRequest request,
+            ConversationStateService conversationStateService,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(customerPhone))
+                    return Results.BadRequest(new { error = "customerPhone es requerido" });
+
+                var body = await request.ReadFromJsonAsync<ClaimRequestDto>(ct);
+                if (body == null || string.IsNullOrWhiteSpace(body.OperatorName))
+                {
+                    return Results.BadRequest(new { error = "operatorName es requerido" });
+                }
+
+                var minutes = body.Minutes > 0 ? body.Minutes : 5; // Default 5 minutos
+
+                var result = await conversationStateService.ClaimAsync(
+                    customerPhone, 
+                    body.OperatorName, 
+                    minutes, 
+                    ct);
+
+                return Results.Ok(new
+                {
+                    success = result.Success,
+                    wasAlreadyAssigned = result.WasAlreadyAssigned,
+                    assignedTo = result.AssignedTo,
+                    assignedUntil = result.AssignedUntil
+                });
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogError(ex, "Error asignando conversación: {Phone}", customerPhone);
+                return Results.Problem(statusCode: 500, title: "Error al asignar la conversación");
+            }
+        })
+        .WithName("ClaimConversation")
+        .WithTags("Conversations");
 
         // Calls endpoints
         app.MapGet("/api/v1/calls/missed", async (int? limit, IMissedCallsService callsService, CancellationToken ct) =>

@@ -325,13 +325,24 @@ public class EsendexMessageWatcher : BackgroundService
                     MaxMessagesPerTick, newMessages.Count);
             }
 
-            // Emitir eventos individuales "NewMessage" (compatibilidad)
+            // Emitir eventos individuales "NewMessage" (con customerPhone para WinForms)
             int emittedCount = 0;
             foreach (var message in messagesToEmit)
             {
                 try
                 {
-                    await hubContext.Clients.All.SendAsync("NewMessage", message, ct);
+                    // Emitir con formato extendido que incluye customerPhone
+                    // El frontend web puede ignorar customerPhone si no lo necesita
+                    await hubContext.Clients.All.SendAsync("NewMessage", new
+                    {
+                        id = message.Id,
+                        customerPhone = message.From, // Para inbound, customerPhone = From
+                        from = message.From,
+                        to = message.To,
+                        message = message.Message,
+                        receivedUtc = message.ReceivedUtc
+                    }, ct);
+                    
                     emittedCount++;
                     _logger.LogDebug("Emitted NewMessage event for ID={Id}", 
                         message.Id.Substring(0, Math.Min(8, message.Id.Length)) + "...");

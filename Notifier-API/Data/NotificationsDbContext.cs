@@ -10,6 +10,7 @@ public class NotificationsDbContext : DbContext
     }
 
     public DbSet<NotifierSmsMessage> SmsMessages { get; set; }
+    public DbSet<ConversationState> ConversationStates { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -70,6 +71,51 @@ public class NotificationsDbContext : DbContext
                 .HasColumnType("nvarchar(100)")
                 .HasMaxLength(100)
                 .IsRequired(false);
+        });
+
+        modelBuilder.Entity<ConversationState>(entity =>
+        {
+            entity.ToTable("ConversationState", "dbo");
+            
+            entity.HasKey(e => e.CustomerPhone);
+            
+            entity.Property(e => e.CustomerPhone)
+                .HasColumnName("CustomerPhone")
+                .HasColumnType("nvarchar(50)")
+                .IsRequired()
+                .HasMaxLength(50);
+            
+            entity.Property(e => e.LastInboundAt)
+                .HasColumnName("LastInboundAt")
+                .HasColumnType("datetime2(0)")
+                .IsRequired(false);
+            
+            entity.Property(e => e.LastOutboundAt)
+                .HasColumnName("LastOutboundAt")
+                .HasColumnType("datetime2(0)")
+                .IsRequired(false);
+            
+            entity.Property(e => e.LastReadInboundAt)
+                .HasColumnName("LastReadInboundAt")
+                .HasColumnType("datetime2(0)")
+                .IsRequired(false);
+            
+            entity.Property(e => e.AssignedTo)
+                .HasColumnName("AssignedTo")
+                .HasColumnType("nvarchar(100)")
+                .HasMaxLength(100)
+                .IsRequired(false);
+            
+            entity.Property(e => e.AssignedUntil)
+                .HasColumnName("AssignedUntil")
+                .HasColumnType("datetime2(0)")
+                .IsRequired(false);
+            
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnName("UpdatedAt")
+                .HasColumnType("datetime2(0)")
+                .IsRequired()
+                .HasDefaultValueSql("SYSUTCDATETIME()");
         });
     }
 }
