@@ -102,7 +102,8 @@ public class SmsMessageRepository
     /// <summary>
     /// Guarda un mensaje enviado en la base de datos
     /// </summary>
-    public async Task<bool> SaveSentAsync(
+    /// <returns>Id del mensaje guardado, o null si falló</returns>
+    public async Task<long?> SaveSentAsync(
         string originator,
         string recipient,
         string body,
@@ -126,38 +127,38 @@ public class SmsMessageRepository
             _dbContext.SmsMessages.Add(message);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
-            _logger.LogDebug("Saved sent SMS message to database. Originator: {Originator}, Recipient: {Recipient}", 
-                originator, recipient);
+            _logger.LogDebug("Saved sent SMS message to database. Id: {Id}, Originator: {Originator}, Recipient: {Recipient}", 
+                message.Id, originator, recipient);
             
-            return true;
+            return message.Id;
         }
         catch (SqlException ex)
         {
             _logger.LogError(ex, 
                 "SQL error saving sent SMS message. Originator: {Originator}, Recipient: {Recipient}, Error: {Error}", 
                 originator, recipient, ex.Message);
-            return false;
+            return null;
         }
         catch (DbUpdateException ex)
         {
             _logger.LogError(ex, 
                 "Database update error saving sent SMS message. Originator: {Originator}, Recipient: {Recipient}, Error: {Error}", 
                 originator, recipient, ex.Message);
-            return false;
+            return null;
         }
         catch (InvalidOperationException ex)
         {
             _logger.LogError(ex, 
                 "Invalid operation error saving sent SMS message. Originator: {Originator}, Recipient: {Recipient}, Error: {Error}", 
                 originator, recipient, ex.Message);
-            return false;
+            return null;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, 
                 "Unexpected error saving sent SMS message. Originator: {Originator}, Recipient: {Recipient}, Error: {Error}", 
                 originator, recipient, ex.Message);
-            return false;
+            return null;
         }
     }
 }

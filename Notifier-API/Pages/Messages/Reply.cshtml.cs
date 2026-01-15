@@ -84,7 +84,7 @@ public class MessagesReplyModel : PageModel
 
             // Intentar guardar en BD (después del envío exitoso)
             var originator = _esendexSettings.AccountReference ?? AccountRef ?? "UNKNOWN";
-            var saved = await _smsRepository.SaveSentAsync(
+            var savedId = await _smsRepository.SaveSentAsync(
                 originator: originator,
                 recipient: To,
                 body: Message,
@@ -92,7 +92,7 @@ public class MessagesReplyModel : PageModel
                 messageAt: result.SubmittedUtc,
                 cancellationToken: HttpContext.RequestAborted);
             
-            if (!saved)
+            if (!savedId.HasValue)
             {
                 // Emitir evento SignalR para notificar el error
                 try
@@ -109,6 +109,24 @@ public class MessagesReplyModel : PageModel
                 // Mostrar advertencia al usuario (pero el mensaje sí se envió)
                 ErrorMessage = $"Mensaje enviado exitosamente, pero no se pudo guardar en la base de datos. ID: {result.Id}";
                 return Page();
+            }
+
+            // Emitir SignalR "NewSentMessage" para notificar a clientes (WinForms, etc.)
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("NewSentMessage", new
+                {
+                    id = savedId.Value.ToString(),
+                    originator = originator,
+                    recipient = To,
+                    body = Message,
+                    direction = 1,
+                    messageAt = result.SubmittedUtc.ToString("O")
+                }, HttpContext.RequestAborted);
+            }
+            catch (Exception signalREx)
+            {
+                _logger.LogWarning(signalREx, "Failed to emit NewSentMessage event via SignalR");
             }
 
             SuccessMessage = $"Mensaje enviado exitosamente a {To}. ID: {result.Id}";
