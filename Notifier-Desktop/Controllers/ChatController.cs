@@ -18,18 +18,45 @@ public class ChatController
 
     public async Task LoadChatAsync(string phone)
     {
+        System.Diagnostics.Debug.WriteLine($"[ChatController] LoadChatAsync called with phone: '{phone}'");
+        
         CurrentPhone = phone;
         Messages.Clear();
         _messageIds.Clear();
 
         var messages = await _apiClient.GetConversationMessagesAsync(phone, take: 200);
+        
+        System.Diagnostics.Debug.WriteLine($"[ChatController] GetConversationMessagesAsync returned {messages?.Count ?? 0} messages");
+        
+        if (messages != null && messages.Count > 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatController] First message: Id={messages[0].Id}, Originator='{messages[0].Originator}', Recipient='{messages[0].Recipient}', Body='{messages[0].Body?.Substring(0, Math.Min(50, messages[0].Body?.Length ?? 0))}...'");
+        }
+        else if (messages == null)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatController] WARNING: GetConversationMessagesAsync returned null");
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatController] WARNING: GetConversationMessagesAsync returned empty list");
+        }
+        
         if (messages != null)
         {
+            System.Diagnostics.Debug.WriteLine($"[ChatController] Processing {messages.Count} messages from API");
+            
             foreach (var msg in messages)
             {
+                System.Diagnostics.Debug.WriteLine($"[ChatController] Mapping message: Id={msg.Id}, Direction={msg.Direction}, Originator='{msg.Originator}', Recipient='{msg.Recipient}', Body length={msg.Body?.Length ?? 0}");
+                
+                if (msg.Id == 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ChatController] WARNING: Message has Id=0, this may indicate a mapping issue");
+                }
+                
                 if (!_messageIds.Contains(msg.Id))
                 {
-                    Messages.Add(new MessageVm
+                    var messageVm = new MessageVm
                     {
                         Id = msg.Id,
                         Direction = (MessageDirection)msg.Direction,
@@ -37,11 +64,21 @@ public class ChatController
                         Text = msg.Body,
                         From = msg.Originator,
                         To = msg.Recipient
-                    });
+                    };
+                    
+                    System.Diagnostics.Debug.WriteLine($"[ChatController] Created MessageVm: Id={messageVm.Id}, Direction={messageVm.Direction}, Text length={messageVm.Text?.Length ?? 0}");
+                    
+                    Messages.Add(messageVm);
                     _messageIds.Add(msg.Id);
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ChatController] Skipping duplicate message Id={msg.Id}");
                 }
             }
         }
+        
+        System.Diagnostics.Debug.WriteLine($"[ChatController] LoadChatAsync completed. Total messages in controller: {Messages.Count}");
     }
 
     public void AddMessage(MessageVm message)

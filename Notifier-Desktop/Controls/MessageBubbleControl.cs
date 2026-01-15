@@ -24,13 +24,15 @@ public partial class MessageBubbleControl : UserControl
     {
         AutoSize = true;
         Padding = new Padding(5, 3, 5, 3);
-        MaximumSize = new Size((int)(Screen.PrimaryScreen?.WorkingArea.Width * 0.7 ?? 500), 0);
+        MaximumSize = new Size(600, 0);  // Valor fijo razonable
 
         _bubblePanel = new Panel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.None,  // Cambiar de Fill a None
             Padding = new Padding(10, 8, 10, 8),
-            AutoSize = true
+            AutoSize = false,  // Cambiar a false para control manual
+            Location = new Point(0, 0),  // Establecer location inicial
+            Size = new Size(200, 50)  // Tamaño inicial mínimo
         };
 
         _lblText = new Label
@@ -39,7 +41,7 @@ public partial class MessageBubbleControl : UserControl
             Font = new Font(Font.FontFamily, 9),
             ForeColor = Color.Black,
             AutoSize = true,
-            MaximumSize = new Size((int)(MaximumSize.Width * 0.9), 0),
+            MaximumSize = new Size(550, 0),  // Valor fijo en lugar de calcular desde MaximumSize
             Location = new Point(10, 8)
         };
 
@@ -62,12 +64,22 @@ public partial class MessageBubbleControl : UserControl
     {
         if (_message == null)
         {
+            System.Diagnostics.Debug.WriteLine("[MessageBubbleControl] UpdateUI called with null message");
             _lblText.Text = "";
             _lblTime.Text = "";
             return;
         }
 
-        _lblText.Text = _message.Text;
+        if (string.IsNullOrWhiteSpace(_message.Text))
+        {
+            System.Diagnostics.Debug.WriteLine($"[MessageBubbleControl] WARNING: Message text is empty. Id={_message.Id}, Direction={_message.Direction}");
+            _lblText.Text = "(mensaje vacío)";
+        }
+        else
+        {
+            _lblText.Text = _message.Text;
+        }
+        
         _lblTime.Text = FormatTime(_message.At);
 
         var isOutbound = _message.Direction == MessageDirection.Outbound;
@@ -79,7 +91,7 @@ public partial class MessageBubbleControl : UserControl
             _lblText.ForeColor = Color.Black;
             _lblTime.ForeColor = Color.FromArgb(100, 100, 100);
             Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _bubblePanel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            // Remover Anchor de _bubblePanel - establecer posición manualmente
         }
         else
         {
@@ -87,7 +99,7 @@ public partial class MessageBubbleControl : UserControl
             _lblText.ForeColor = Color.Black;
             _lblTime.ForeColor = Color.FromArgb(100, 100, 100);
             Anchor = AnchorStyles.Top | AnchorStyles.Left;
-            _bubblePanel.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            // Remover Anchor de _bubblePanel - establecer posición manualmente
         }
 
         // Ajustar tamaño del panel según contenido
@@ -95,19 +107,29 @@ public partial class MessageBubbleControl : UserControl
             new Size(_lblText.MaximumSize.Width, int.MaxValue), 
             TextFormatFlags.WordBreak);
         
-        _bubblePanel.Height = Math.Max(textSize.Height + 25, 40);
-        _bubblePanel.Width = Math.Min(textSize.Width + 40, MaximumSize.Width - 20);
+        var bubbleHeight = Math.Max(textSize.Height + 25, 40);
+        var bubbleWidth = Math.Min(textSize.Width + 40, MaximumSize.Width - 20);
+        
+        // Establecer Location y Size explícitamente (necesario con Dock=None)
+        _bubblePanel.Location = new Point(Padding.Left, Padding.Top);
+        _bubblePanel.Size = new Size(
+            Math.Max(bubbleWidth, 100),  // Tamaño mínimo visible
+            Math.Max(bubbleHeight, 40)
+        );
         
         _lblTime.Location = new Point(
             _bubblePanel.Width - _lblTime.Width - 10,
             _bubblePanel.Height - _lblTime.Height - 5);
 
-        Height = _bubblePanel.Height + Padding.Top + Padding.Bottom;
-        Width = _bubblePanel.Width + Padding.Left + Padding.Right;
+        // Asegurar que el UserControl tenga un tamaño mínimo visible
+        Height = Math.Max(_bubblePanel.Height + Padding.Top + Padding.Bottom, 50);
+        Width = Math.Max(_bubblePanel.Width + Padding.Left + Padding.Right, 100);
 
         // Redondear esquinas (simulado con bordes)
         _bubblePanel.Region = System.Drawing.Region.FromHrgn(
             CreateRoundRectRgn(0, 0, _bubblePanel.Width, _bubblePanel.Height, 10, 10));
+        
+        System.Diagnostics.Debug.WriteLine($"[MessageBubbleControl] UpdateUI completed: UserControl Size={Size}, BubblePanel Size={_bubblePanel.Size}, Visible={Visible}");
     }
 
     private string FormatTime(DateTime dateTime)

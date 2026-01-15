@@ -234,6 +234,24 @@ public static class WebApplicationExtensions
                     : phoneNormalized;
                 var phonePlus = "+" + phoneNoPlus;
 
+                // LOGS DE DIAGNÓSTICO
+                app.Logger.LogInformation("[GetConversationMessages] Input phone: '{Phone}', Normalized: '{Normalized}', NoPlus: '{NoPlus}', Plus: '{Plus}'", 
+                    phone, phoneNormalized, phoneNoPlus, phonePlus);
+
+                // Verificar qué formatos hay realmente en la BD para este número (muestra de diagnóstico)
+                var sampleInbound = await dbContext.SmsMessages.AsNoTracking()
+                    .Where(m => m.Direction == 0 && (m.Originator.Contains(phoneNoPlus) || m.Originator.Contains(phonePlus)))
+                    .Select(m => m.Originator)
+                    .FirstOrDefaultAsync(ct);
+                
+                var sampleOutbound = await dbContext.SmsMessages.AsNoTracking()
+                    .Where(m => m.Direction == 1 && (m.Recipient.Contains(phoneNoPlus) || m.Recipient.Contains(phonePlus)))
+                    .Select(m => m.Recipient)
+                    .FirstOrDefaultAsync(ct);
+
+                app.Logger.LogInformation("[GetConversationMessages] Sample Inbound Originator in DB: '{Originator}', Sample Outbound Recipient in DB: '{Recipient}'", 
+                    sampleInbound ?? "NOT FOUND", sampleOutbound ?? "NOT FOUND");
+
                 // Mensajes entre empresa y ese phone (tolerante a formato):
                 // - Inbound: Direction=0 AND (Originator==phoneNoPlus OR Originator==phonePlus)
                 // - Outbound: Direction=1 AND (Recipient==phoneNoPlus OR Recipient==phonePlus)
@@ -254,6 +272,17 @@ public static class WebApplicationExtensions
                         messageAt = m.MessageAt
                     })
                     .ToListAsync(ct);
+
+                app.Logger.LogInformation("[GetConversationMessages] Found {Count} messages for phone '{Phone}' (searched as '{NoPlus}' and '{Plus}')", 
+                    items.Count, phone, phoneNoPlus, phonePlus);
+
+                if (items.Count == 0)
+                {
+                    app.Logger.LogWarning("[GetConversationMessages] No messages found. This could indicate a format mismatch. " +
+                        "Check if Originator/Recipient in DB match the search patterns. " +
+                        "Sample Inbound Originator: '{Originator}', Sample Outbound Recipient: '{Recipient}'", 
+                        sampleInbound ?? "NOT FOUND", sampleOutbound ?? "NOT FOUND");
+                }
 
                 return Results.Ok(items);
             }

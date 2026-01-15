@@ -350,6 +350,8 @@ public partial class MainForm : Form
 
     private async Task ConversationRowControl_ConversationSelected(string phone)
     {
+        System.Diagnostics.Debug.WriteLine($"[MainForm] ConversationRowControl_ConversationSelected called with phone: '{phone}'");
+        
         if (_selectedPhone == phone) return;
 
         _selectedPhone = phone;
@@ -358,9 +360,12 @@ public partial class MainForm : Form
         var phoneNormalized = PhoneNormalizer.Normalize(phone);
         if (string.IsNullOrEmpty(phoneNormalized))
         {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] ERROR: Could not normalize phone '{phone}'");
             ShowError($"Número telefónico inválido: {phone}");
             return;
         }
+
+        System.Diagnostics.Debug.WriteLine($"[MainForm] Phone normalized: '{phone}' -> '{phoneNormalized}'");
 
         // Claim conversación (usar phone normalizado)
         if (_apiClient != null && !string.IsNullOrWhiteSpace(_settings.OperatorName))
@@ -371,7 +376,9 @@ public partial class MainForm : Form
         // Cargar chat (usar phone normalizado para API, pero el endpoint ya es tolerante)
         if (_chatController != null)
         {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Calling LoadChatAsync with normalized phone: '{phoneNormalized}'");
             await _chatController.LoadChatAsync(phoneNormalized);
+            System.Diagnostics.Debug.WriteLine($"[MainForm] LoadChatAsync completed. ChatController has {_chatController.Messages.Count} messages");
             RefreshChat();
         }
 
@@ -394,22 +401,50 @@ public partial class MainForm : Form
             return;
         }
 
-        if (_chatController == null) return;
+        if (_chatController == null)
+        {
+            System.Diagnostics.Debug.WriteLine("[MainForm] RefreshChat: _chatController is null");
+            return;
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[MainForm] RefreshChat: _chatController.Messages.Count = {_chatController.Messages.Count}");
 
         _flowChat.Controls.Clear();
 
-        foreach (var msg in _chatController.Messages)
+        if (_chatController.Messages.Count == 0)
         {
-            var bubble = new MessageBubbleControl
-            {
-                Message = msg,
-                Width = _flowChat.Width - 30
-            };
-            _flowChat.Controls.Add(bubble);
+            System.Diagnostics.Debug.WriteLine("[MainForm] RefreshChat: No messages to display");
+            return; // No hacer scroll si no hay mensajes
         }
 
-        // Auto-scroll al final
-        _flowChat.ScrollControlIntoView(_flowChat.Controls[_flowChat.Controls.Count - 1]);
+        foreach (var msg in _chatController.Messages)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Adding message bubble: Id={msg.Id}, Direction={msg.Direction}, Text='{msg.Text?.Substring(0, Math.Min(30, msg.Text?.Length ?? 0))}...'");
+            
+            var bubble = new MessageBubbleControl
+            {
+                Message = msg  // Asignar Message primero (esto llama UpdateUI y calcula tamaño)
+            };
+            
+            // Ajustar ancho máximo después de que UpdateUI haya calculado el tamaño
+            var maxWidth = _flowChat.Width - 30;
+            if (maxWidth > 0 && bubble.Width > maxWidth)
+            {
+                bubble.Width = maxWidth;
+            }
+            
+            _flowChat.Controls.Add(bubble);
+            
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Bubble added: Size={bubble.Size}, Visible={bubble.Visible}, Location={bubble.Location}");
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[MainForm] RefreshChat: Added {_flowChat.Controls.Count} bubbles to _flowChat");
+
+        // Auto-scroll al final solo si hay controles
+        if (_flowChat.Controls.Count > 0)
+        {
+            _flowChat.ScrollControlIntoView(_flowChat.Controls[_flowChat.Controls.Count - 1]);
+        }
     }
 
     private void UpdateChatHeader(string phone)
@@ -546,15 +581,35 @@ public partial class MainForm : Form
             ? message.CustomerPhone 
             : message.Originator; // Fallback para compatibilidad
 
+        // Log de warning si CustomerPhone sigue vacío después del fix
+        if (string.IsNullOrWhiteSpace(customerPhone))
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: CustomerPhone is empty for NewMessage. " +
+                $"Originator='{message.Originator}', Recipient='{message.Recipient}', Direction={message.Direction}");
+            return; // No procesar si no hay customerPhone
+        }
+
+        // Normalizar customerPhone para comparación (puede venir con/sin '+')
+        var customerPhoneNormalized = Helpers.PhoneNormalizer.Normalize(customerPhone);
+        if (string.IsNullOrEmpty(customerPhoneNormalized))
+            customerPhoneNormalized = customerPhone; // Usar original si no se puede normalizar
+
         // Actualizar conversación en lista
         if (_conversationsController != null)
         {
-            _conversationsController.UpdateBadges(customerPhone, unread: true, pending: true);
+            _conversationsController.UpdateBadges(customerPhoneNormalized, unread: true, pending: true);
             RefreshConversationsList();
         }
 
         // Si esta conversación está abierta, añadir al chat
-        if (_selectedPhone == customerPhone && _chatController != null)
+        // Comparar con _selectedPhone normalizado también
+        var selectedPhoneNormalized = !string.IsNullOrWhiteSpace(_selectedPhone)
+            ? Helpers.PhoneNormalizer.Normalize(_selectedPhone)
+            : _selectedPhone;
+        if (string.IsNullOrEmpty(selectedPhoneNormalized))
+            selectedPhoneNormalized = _selectedPhone;
+
+        if (selectedPhoneNormalized == customerPhoneNormalized && _chatController != null)
         {
             var msgVm = new MessageVm
             {
@@ -571,7 +626,7 @@ public partial class MainForm : Form
             // Marcar como leído solo si la ventana está enfocada
             if (_isWindowFocused && _apiClient != null)
             {
-                _apiClient.MarkConversationReadAsync(customerPhone).GetAwaiter();
+                _apiClient.MarkConversationReadAsync(customerPhoneNormalized).GetAwaiter();
             }
         }
     }
@@ -588,15 +643,35 @@ public partial class MainForm : Form
             ? message.CustomerPhone 
             : message.Recipient; // Fallback para compatibilidad
 
+        // Log de warning si CustomerPhone sigue vacío después del fix
+        if (string.IsNullOrWhiteSpace(customerPhone))
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: CustomerPhone is empty for NewSentMessage. " +
+                $"Originator='{message.Originator}', Recipient='{message.Recipient}', Direction={message.Direction}");
+            return; // No procesar si no hay customerPhone
+        }
+
+        // Normalizar customerPhone para comparación (puede venir con/sin '+')
+        var customerPhoneNormalized = Helpers.PhoneNormalizer.Normalize(customerPhone);
+        if (string.IsNullOrEmpty(customerPhoneNormalized))
+            customerPhoneNormalized = customerPhone; // Usar original si no se puede normalizar
+
         // Actualizar conversación en lista
         if (_conversationsController != null)
         {
-            _conversationsController.UpdateBadges(customerPhone, unread: false, pending: false);
+            _conversationsController.UpdateBadges(customerPhoneNormalized, unread: false, pending: false);
             RefreshConversationsList();
         }
 
         // Si esta conversación está abierta, añadir al chat
-        if (_selectedPhone == customerPhone && _chatController != null)
+        // Comparar con _selectedPhone normalizado también
+        var selectedPhoneNormalized = !string.IsNullOrWhiteSpace(_selectedPhone)
+            ? Helpers.PhoneNormalizer.Normalize(_selectedPhone)
+            : _selectedPhone;
+        if (string.IsNullOrEmpty(selectedPhoneNormalized))
+            selectedPhoneNormalized = _selectedPhone;
+
+        if (selectedPhoneNormalized == customerPhoneNormalized && _chatController != null)
         {
             var msgVm = new MessageVm
             {

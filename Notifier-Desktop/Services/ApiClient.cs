@@ -77,17 +77,29 @@ public class ApiClient
                 phoneNormalized = phone; // Usar original si no se puede normalizar
             }
             
-            var response = await _httpClient.GetAsync(
-                $"/api/v1/db/conversations/{Uri.EscapeDataString(phoneNormalized)}/messages?take={take}",
-                ct);
+            var url = $"/api/v1/db/conversations/{Uri.EscapeDataString(phoneNormalized)}/messages?take={take}";
+            System.Diagnostics.Debug.WriteLine($"[ApiClient] GetConversationMessagesAsync - Input phone: '{phone}', Normalized: '{phoneNormalized}', URL: '{url}'");
+            
+            var response = await _httpClient.GetAsync(url, ct);
+            
+            System.Diagnostics.Debug.WriteLine($"[ApiClient] Response status: {response.StatusCode}");
+            
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadFromJsonAsync<List<MessageDto>>(ct);
+                var messages = await response.Content.ReadFromJsonAsync<List<MessageDto>>(ct);
+                System.Diagnostics.Debug.WriteLine($"[ApiClient] Successfully deserialized {messages?.Count ?? 0} messages");
+                return messages;
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync(ct);
+                System.Diagnostics.Debug.WriteLine($"[ApiClient] Error response ({response.StatusCode}): {errorContent}");
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Retornar null en caso de error
+            System.Diagnostics.Debug.WriteLine($"[ApiClient] Exception in GetConversationMessagesAsync: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[ApiClient] Stack trace: {ex.StackTrace}");
         }
         return null;
     }
