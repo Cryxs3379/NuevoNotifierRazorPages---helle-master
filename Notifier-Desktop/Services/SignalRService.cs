@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.AspNetCore.SignalR.Client;
 using NotifierDesktop.Models;
 
@@ -42,13 +43,19 @@ public class SignalRService : IDisposable
         {
             try
             {
-                // El payload puede venir como MessageDto o como objeto dinámico
                 var dto = ConvertToMessageDto(message);
+                Debug.WriteLine($"[SignalR] NewMessage parsed: phone={dto.CustomerPhone} from={dto.Originator} to={dto.Recipient} id={dto.Id} body='{dto.Body?.Substring(0, Math.Min(50, dto.Body?.Length ?? 0))}...'");
                 OnNewMessage?.Invoke(dto);
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignorar errores de deserialización
+                Debug.WriteLine($"[SignalR] ERROR parsing NewMessage: {ex.GetType().Name}: {ex.Message}");
+                Debug.WriteLine($"[SignalR] StackTrace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    Debug.WriteLine($"[SignalR] InnerException: {ex.InnerException.Message}");
+                }
+                // NO tragar el error silenciosamente - siempre loguear
             }
         });
 
@@ -57,11 +64,18 @@ public class SignalRService : IDisposable
             try
             {
                 var dto = ConvertToMessageDto(message);
+                Debug.WriteLine($"[SignalR] NewSentMessage parsed: phone={dto.CustomerPhone} from={dto.Originator} to={dto.Recipient} id={dto.Id} body='{dto.Body?.Substring(0, Math.Min(50, dto.Body?.Length ?? 0))}...'");
                 OnNewSentMessage?.Invoke(dto);
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignorar errores de deserialización
+                Debug.WriteLine($"[SignalR] ERROR parsing NewSentMessage: {ex.GetType().Name}: {ex.Message}");
+                Debug.WriteLine($"[SignalR] StackTrace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    Debug.WriteLine($"[SignalR] InnerException: {ex.InnerException.Message}");
+                }
+                // NO tragar el error silenciosamente - siempre loguear
             }
         });
 
@@ -122,9 +136,25 @@ public class SignalRService : IDisposable
 
     private MessageDto ConvertToMessageDto(object obj)
     {
+        if (obj == null)
+        {
+            Debug.WriteLine("[SignalR] ConvertToMessageDto: obj is null");
+            return new MessageDto();
+        }
+
         // Convertir objeto dinámico a MessageDto
         if (obj is MessageDto dto)
+        {
+            Debug.WriteLine($"[SignalR] ConvertToMessageDto: obj is already MessageDto");
             return dto;
+        }
+
+        // Si viene como JsonElement, leer propiedades directamente
+        if (obj is JsonElement je)
+        {
+            Debug.WriteLine("[SignalR] ConvertToMessageDto: obj is JsonElement");
+            return ConvertFromJsonElement(je);
+        }
 
         // Si viene como objeto anónimo/dinámico, usar reflexión
         var type = obj.GetType();
@@ -271,6 +301,170 @@ public class SignalRService : IDisposable
             $"Direction={dtoResult.Direction}, MessageAt={dtoResult.MessageAt:O}, CustomerPhone='{dtoResult.CustomerPhone}'");
 
         return dtoResult;
+    }
+
+    private MessageDto ConvertFromJsonElement(JsonElement je)
+    {
+        var dto = new MessageDto();
+
+        try
+        {
+            // 1. Mapear Id
+            if (je.TryGetProperty("id", out var idElement) || je.TryGetProperty("Id", out idElement))
+            {
+                if (idElement.ValueKind == JsonValueKind.String)
+                {
+                    var idStr = idElement.GetString();
+                    if (long.TryParse(idStr, out var idLong))
+                        dto.Id = idLong;
+                    else
+                    {
+                        dto.Id = 0;
+                        Debug.WriteLine($"[SignalR] Id is GUID string '{idStr}', setting Id=0");
+                    }
+                }
+                else if (idElement.ValueKind == JsonValueKind.Number)
+                {
+                    dto.Id = idElement.GetInt64();
+                }
+            }
+
+            // 2. Mapear CustomerPhone
+            if (je.TryGetProperty("customerPhone", out var customerPhoneElement) || 
+                je.TryGetProperty("CustomerPhone", out customerPhoneElement))
+            {
+                dto.CustomerPhone = customerPhoneElement.GetString()?.Trim() ?? string.Empty;
+            }
+
+            // 3. Mapear Originator (from/originator)
+            string? originator = null;
+            if (je.TryGetProperty("originator", out var originatorElement) || 
+                je.TryGetProperty("Originator", out originatorElement) ||
+                je.TryGetProperty("from", out originatorElement) ||
+                je.TryGetProperty("From", out originatorElement))
+            {
+                originator = originatorElement.GetString()?.Trim();
+            }
+            dto.Originator = originator ?? string.Empty;
+
+            // 4. Mapear Recipient (to/recipient)
+            string? recipient = null;
+            if (je.TryGetProperty("recipient", out var recipientElement) || 
+                je.TryGetProperty("Recipient", out recipientElement) ||
+                je.TryGetProperty("to", out recipientElement) ||
+                je.TryGetProperty("To", out recipientElement))
+            {
+                recipient = recipientElement.GetString()?.Trim();
+            }
+            dto.Recipient = recipient ?? string.Empty;
+
+            // 5. Mapear Body (message/body)
+            if (je.TryGetProperty("body", out var bodyElement) || 
+                je.TryGetProperty("Body", out bodyElement) ||
+                je.TryGetProperty("message", out bodyElement) ||
+                je.TryGetProperty("Message", out bodyElement))
+            {
+                dto.Body = bodyElement.GetString() ?? string.Empty;
+            }
+
+            // 6. Mapear MessageAt (messageAt/receivedUtc)
+            if (je.TryGetProperty("messageAt", out var messageAtElement) || 
+                je.TryGetProperty("MessageAt", out messageAtElement) ||
+                je.TryGetProperty("receivedUtc", out messageAtElement) ||
+                je.TryGetProperty("ReceivedUtc", out messageAtElement))
+            {
+                if (messageAtElement.ValueKind == JsonValueKind.String)
+                {
+                    var dateStr = messageAtElement.GetString();
+                    if (DateTime.TryParse(dateStr, out var parsedDt))
+                        dto.MessageAt = parsedDt;
+                }
+                else if (messageAtElement.ValueKind == JsonValueKind.Number)
+                {
+                    // Timestamp Unix (no esperado pero por si acaso)
+                    var timestamp = messageAtElement.GetInt64();
+                    dto.MessageAt = DateTimeOffset.FromUnixTimeSeconds(timestamp).DateTime;
+                }
+            }
+
+            // Si no se obtuvo MessageAt, usar UtcNow como fallback
+            if (dto.MessageAt == default(DateTime))
+            {
+                dto.MessageAt = DateTime.UtcNow;
+                Debug.WriteLine("[SignalR] MessageAt not found in JsonElement, using DateTime.UtcNow");
+            }
+
+            // 7. Mapear Direction
+            if (je.TryGetProperty("direction", out var directionElement) || 
+                je.TryGetProperty("Direction", out directionElement))
+            {
+                if (directionElement.ValueKind == JsonValueKind.Number)
+                {
+                    dto.Direction = (byte)directionElement.GetByte();
+                }
+                else if (directionElement.ValueKind == JsonValueKind.String)
+                {
+                    if (byte.TryParse(directionElement.GetString(), out var dirByte))
+                        dto.Direction = dirByte;
+                }
+            }
+            else
+            {
+                // Inferir direction: si hay receivedUtc, asumir inbound
+                if (je.TryGetProperty("receivedUtc", out _) || je.TryGetProperty("ReceivedUtc", out _))
+                {
+                    dto.Direction = 0; // Inbound
+                    Debug.WriteLine("[SignalR] Direction not found but receivedUtc present, assuming Direction=0 (inbound)");
+                }
+                else
+                {
+                    dto.Direction = 0; // Default inbound
+                    Debug.WriteLine("[SignalR] Direction not found, defaulting to Direction=0 (inbound)");
+                }
+            }
+
+            // 8. Calcular CustomerPhone si no viene
+            if (string.IsNullOrWhiteSpace(dto.CustomerPhone))
+            {
+                if (dto.Direction == 0)
+                {
+                    // Inbound: CustomerPhone = Originator
+                    dto.CustomerPhone = dto.Originator;
+                }
+                else if (dto.Direction == 1)
+                {
+                    // Outbound: CustomerPhone = Recipient
+                    dto.CustomerPhone = dto.Recipient;
+                }
+                else
+                {
+                    // Fallback
+                    if (!string.IsNullOrWhiteSpace(dto.Originator))
+                        dto.CustomerPhone = dto.Originator;
+                    else if (!string.IsNullOrWhiteSpace(dto.Recipient))
+                        dto.CustomerPhone = dto.Recipient;
+                }
+            }
+
+            // Log si no se pudo obtener phone
+            if (string.IsNullOrWhiteSpace(dto.CustomerPhone))
+            {
+                Debug.WriteLine($"[SignalR] WARNING: Could not determine CustomerPhone from JsonElement. " +
+                    $"Originator='{dto.Originator}', Recipient='{dto.Recipient}', Direction={dto.Direction}");
+            }
+
+            Debug.WriteLine($"[SignalR] JsonElement mapped - Id={dto.Id}, CustomerPhone='{dto.CustomerPhone}', " +
+                $"Originator='{dto.Originator}', Recipient='{dto.Recipient}', Body='{dto.Body?.Substring(0, Math.Min(50, dto.Body?.Length ?? 0))}...', " +
+                $"Direction={dto.Direction}, MessageAt={dto.MessageAt:O}");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SignalR] ERROR in ConvertFromJsonElement: {ex.GetType().Name}: {ex.Message}");
+            Debug.WriteLine($"[SignalR] StackTrace: {ex.StackTrace}");
+            // Retornar DTO parcial en lugar de fallar completamente
+        }
+
+        return dto;
     }
 
     public void Dispose()
