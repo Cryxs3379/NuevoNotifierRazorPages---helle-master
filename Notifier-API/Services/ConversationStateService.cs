@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NotifierAPI.Data;
+using NotifierAPI.Helpers;
 
 namespace NotifierAPI.Services;
 
@@ -21,6 +22,15 @@ public class ConversationStateService
     /// </summary>
     public async Task UpsertInboundAsync(string customerPhone, DateTime messageAtUtc, CancellationToken ct)
     {
+        // Normalizar teléfono al formato canónico (sin '+')
+        var originalPhone = customerPhone;
+        customerPhone = PhoneNormalizer.NormalizePhone(customerPhone);
+        
+        if (originalPhone != customerPhone)
+        {
+            _logger.LogDebug("Normalized phone in UpsertInboundAsync: '{Original}' -> '{Normalized}'", originalPhone, customerPhone);
+        }
+        
         try
         {
             var existing = await _dbContext.ConversationStates
@@ -60,6 +70,15 @@ public class ConversationStateService
     /// </summary>
     public async Task UpsertOutboundAsync(string customerPhone, DateTime messageAtUtc, CancellationToken ct)
     {
+        // Normalizar teléfono al formato canónico (sin '+')
+        var originalPhone = customerPhone;
+        customerPhone = PhoneNormalizer.NormalizePhone(customerPhone);
+        
+        if (originalPhone != customerPhone)
+        {
+            _logger.LogDebug("Normalized phone in UpsertOutboundAsync: '{Original}' -> '{Normalized}'", originalPhone, customerPhone);
+        }
+        
         try
         {
             var existing = await _dbContext.ConversationStates
@@ -99,6 +118,15 @@ public class ConversationStateService
     /// </summary>
     public async Task MarkReadAsync(string customerPhone, CancellationToken ct)
     {
+        // Normalizar teléfono al formato canónico (sin '+')
+        var originalPhone = customerPhone;
+        customerPhone = PhoneNormalizer.NormalizePhone(customerPhone);
+        
+        if (originalPhone != customerPhone)
+        {
+            _logger.LogDebug("Normalized phone in MarkReadAsync: '{Original}' -> '{Normalized}'", originalPhone, customerPhone);
+        }
+        
         try
         {
             var state = await _dbContext.ConversationStates
@@ -134,6 +162,15 @@ public class ConversationStateService
     /// </summary>
     public async Task<ClaimResult> ClaimAsync(string customerPhone, string operatorName, int minutes, CancellationToken ct)
     {
+        // Normalizar teléfono al formato canónico (sin '+')
+        var originalPhone = customerPhone;
+        customerPhone = PhoneNormalizer.NormalizePhone(customerPhone);
+        
+        if (originalPhone != customerPhone)
+        {
+            _logger.LogDebug("Normalized phone in ClaimAsync: '{Original}' -> '{Normalized}'", originalPhone, customerPhone);
+        }
+        
         try
         {
             var state = await _dbContext.ConversationStates

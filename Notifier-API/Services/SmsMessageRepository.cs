@@ -1,6 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using NotifierAPI.Data;
+using NotifierAPI.Helpers;
 
 namespace NotifierAPI.Services;
 
@@ -60,7 +61,9 @@ public class SmsMessageRepository
             {
                 try
                 {
-                    await _conversationStateService.UpsertInboundAsync(originator, message.MessageAt, cancellationToken);
+                    // Normalizar originator antes de actualizar ConversationState
+                    var normalizedOriginator = PhoneNormalizer.NormalizePhone(originator);
+                    await _conversationStateService.UpsertInboundAsync(normalizedOriginator, message.MessageAt, cancellationToken);
                 }
                 catch (Exception ex)
                 {
@@ -153,7 +156,9 @@ public class SmsMessageRepository
             {
                 try
                 {
-                    await _conversationStateService.UpsertOutboundAsync(recipient, message.MessageAt, cancellationToken);
+                    // Normalizar recipient antes de actualizar ConversationState
+                    var normalizedRecipient = PhoneNormalizer.NormalizePhone(recipient);
+                    await _conversationStateService.UpsertOutboundAsync(normalizedRecipient, message.MessageAt, cancellationToken);
                 }
                 catch (Exception ex)
                 {

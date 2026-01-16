@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using NotifierAPI.Configuration;
 using NotifierAPI.Hubs;
 using NotifierAPI.Models;
+using NotifierAPI.Helpers;
 
 namespace NotifierAPI.Services;
 
@@ -331,12 +332,33 @@ public class EsendexMessageWatcher : BackgroundService
             {
                 try
                 {
-                    // Emitir con formato extendido que incluye customerPhone
+                    // Normalizar customerPhone al formato canónico (sin '+') para ConversationState
+                    string? normalizedCustomerPhone = null;
+                    if (!string.IsNullOrWhiteSpace(message.From))
+                    {
+                        try
+                        {
+                            normalizedCustomerPhone = PhoneNormalizer.NormalizePhone(message.From);
+                            if (message.From != normalizedCustomerPhone)
+                            {
+                                _logger.LogDebug("Normalized customerPhone in SignalR NewMessage: '{Original}' -> '{Normalized}'", 
+                                    message.From, normalizedCustomerPhone);
+                            }
+                        }
+                        catch (Exception normEx)
+                        {
+                            _logger.LogWarning(normEx, "Failed to normalize customerPhone for SignalR: From={From}", message.From);
+                            // Usar el original si falla la normalización
+                            normalizedCustomerPhone = message.From;
+                        }
+                    }
+                    
+                    // Emitir con formato extendido que incluye customerPhone normalizado
                     // El frontend web puede ignorar customerPhone si no lo necesita
                     await hubContext.Clients.All.SendAsync("NewMessage", new
                     {
                         id = message.Id,
-                        customerPhone = message.From, // Para inbound, customerPhone = From
+                        customerPhone = normalizedCustomerPhone ?? message.From, // Para inbound, customerPhone = From (normalizado)
                         from = message.From,
                         to = message.To,
                         message = message.Message,

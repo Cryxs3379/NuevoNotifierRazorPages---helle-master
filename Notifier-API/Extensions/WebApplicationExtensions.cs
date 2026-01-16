@@ -5,6 +5,7 @@ using NotifierAPI.Services;
 using NotifierAPI.Hubs;
 using NotifierAPI.Data;
 using NotifierAPI.Configuration;
+using NotifierAPI.Helpers;
 using System.Text.RegularExpressions;
 
 namespace NotifierAPI.Extensions;
@@ -354,12 +355,31 @@ public static class WebApplicationExtensions
                 {
                     try
                     {
+                        // Normalizar customerPhone al formato canónico (sin '+') para ConversationState
+                        // toNormalized tiene '+' (E.164), pero customerPhone debe ser sin '+' para consistencia
+                        string customerPhoneForSignalR;
+                        try
+                        {
+                            customerPhoneForSignalR = PhoneNormalizer.NormalizePhone(toNormalized);
+                            if (toNormalized != customerPhoneForSignalR)
+                            {
+                                app.Logger.LogDebug("Normalized customerPhone in SignalR NewSentMessage: '{Original}' -> '{Normalized}'", 
+                                    toNormalized, customerPhoneForSignalR);
+                            }
+                        }
+                        catch (Exception normEx)
+                        {
+                            app.Logger.LogWarning(normEx, "Failed to normalize customerPhone for SignalR: To={To}", toNormalized);
+                            // Usar el original si falla la normalización
+                            customerPhoneForSignalR = toNormalized;
+                        }
+                        
                         await hubContext.Clients.All.SendAsync("NewSentMessage", new
                         {
                             id = savedId.Value.ToString(),
-                            customerPhone = toNormalized, // Para outbound, customerPhone = Recipient (normalizado)
+                            customerPhone = customerPhoneForSignalR, // Para outbound, customerPhone = Recipient (normalizado sin '+')
                             originator = originator,
-                            recipient = toNormalized,
+                            recipient = toNormalized, // Mantener formato E.164 con '+' para recipient
                             body = body.Message,
                             direction = 1,
                             messageAt = sendResult.SubmittedUtc.ToString("O")
@@ -416,10 +436,19 @@ public static class WebApplicationExtensions
                 // Query base de ConversationState
                 var query = dbContext.ConversationStates.AsNoTracking();
 
-                // Filtro por teléfono si viene
+                // Filtro por teléfono si viene (normalizar antes de buscar)
                 if (!string.IsNullOrWhiteSpace(q))
                 {
-                    query = query.Where(cs => cs.CustomerPhone.Contains(q));
+                    try
+                    {
+                        var normalizedQ = PhoneNormalizer.NormalizePhone(q);
+                        query = query.Where(cs => cs.CustomerPhone.Contains(normalizedQ));
+                    }
+                    catch (ArgumentException)
+                    {
+                        // Si no se puede normalizar, buscar sin normalizar (para compatibilidad)
+                        query = query.Where(cs => cs.CustomerPhone.Contains(q));
+                    }
                 }
 
                 // Calcular campos calculados y preview
@@ -518,27 +547,15 @@ public static class WebApplicationExtensions
                 if (string.IsNullOrWhiteSpace(customerPhone))
                     return Results.BadRequest(new { error = "customerPhone es requerido" });
 
-                // Normalizar phone para tolerar con/sin '+'
-                var phoneNormalized = customerPhone.Trim().Replace(" ", "");
-                var phoneNoPlus = phoneNormalized.StartsWith("+") 
-                    ? phoneNormalized.Substring(1) 
-                    : phoneNormalized;
-                var phonePlus = "+" + phoneNoPlus;
+                // Normalizar phone al formato canónico (sin '+')
+                var normalizedPhone = PhoneNormalizer.NormalizePhone(customerPhone);
+                
+                // MarkReadAsync ya normaliza internamente, pero normalizamos aquí también para consistencia
+                await conversationStateService.MarkReadAsync(normalizedPhone, ct);
 
-                // Buscar ConversationState con cualquiera de los formatos
+                // Obtener estado actualizado (usar teléfono normalizado)
                 var state = await dbContext.ConversationStates.AsNoTracking()
-                    .FirstOrDefaultAsync(cs => cs.CustomerPhone == phoneNoPlus || cs.CustomerPhone == phonePlus, ct);
-
-                if (state == null)
-                    return Results.NotFound(new { error = "Conversación no encontrada" });
-
-                // Usar el CustomerPhone real del estado encontrado para MarkReadAsync
-                await conversationStateService.MarkReadAsync(state.CustomerPhone, ct);
-
-                // Obtener estado actualizado
-                var statePhone = state.CustomerPhone;
-                state = await dbContext.ConversationStates.AsNoTracking()
-                    .FirstOrDefaultAsync(cs => cs.CustomerPhone == statePhone, ct);
+                    .FirstOrDefaultAsync(cs => cs.CustomerPhone == normalizedPhone, ct);
 
                 if (state == null)
                     return Results.NotFound(new { error = "Conversación no encontrada después de actualizar" });
@@ -584,24 +601,14 @@ public static class WebApplicationExtensions
                     return Results.BadRequest(new { error = "operatorName es requerido" });
                 }
 
-                // Normalizar phone para tolerar con/sin '+'
-                var phoneNormalized = customerPhone.Trim().Replace(" ", "");
-                var phoneNoPlus = phoneNormalized.StartsWith("+") 
-                    ? phoneNormalized.Substring(1) 
-                    : phoneNormalized;
-                var phonePlus = "+" + phoneNoPlus;
-
-                // Buscar ConversationState con cualquiera de los formatos
-                var existingState = await dbContext.ConversationStates.AsNoTracking()
-                    .FirstOrDefaultAsync(cs => cs.CustomerPhone == phoneNoPlus || cs.CustomerPhone == phonePlus, ct);
-
-                // Usar el CustomerPhone real del estado encontrado (o el normalizado sin '+' si no existe)
-                var phoneToUse = existingState?.CustomerPhone ?? phoneNoPlus;
+                // Normalizar phone al formato canónico (sin '+')
+                var normalizedPhone = PhoneNormalizer.NormalizePhone(customerPhone);
 
                 var minutes = body.Minutes > 0 ? body.Minutes : 5; // Default 5 minutos
 
+                // ClaimAsync ya normaliza internamente, pero normalizamos aquí también para consistencia
                 var result = await conversationStateService.ClaimAsync(
-                    phoneToUse, 
+                    normalizedPhone, 
                     body.OperatorName, 
                     minutes, 
                     ct);

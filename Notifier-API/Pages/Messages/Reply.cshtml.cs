@@ -6,6 +6,7 @@ using NotifierAPI.Services;
 using NotifierAPI.Models;
 using NotifierAPI.Configuration;
 using NotifierAPI.Hubs;
+using NotifierAPI.Helpers;
 using System.Text.RegularExpressions;
 
 namespace NotifierAPI.Pages.Messages;
@@ -114,12 +115,30 @@ public class MessagesReplyModel : PageModel
             // Emitir SignalR "NewSentMessage" para notificar a clientes (WinForms, etc.)
             try
             {
+                // Normalizar customerPhone al formato canónico (sin '+') para ConversationState
+                string customerPhoneForSignalR;
+                try
+                {
+                    customerPhoneForSignalR = PhoneNormalizer.NormalizePhone(To);
+                    if (To != customerPhoneForSignalR)
+                    {
+                        _logger.LogDebug("Normalized customerPhone in SignalR NewSentMessage (Reply): '{Original}' -> '{Normalized}'", 
+                            To, customerPhoneForSignalR);
+                    }
+                }
+                catch (Exception normEx)
+                {
+                    _logger.LogWarning(normEx, "Failed to normalize customerPhone for SignalR: To={To}", To);
+                    // Usar el original si falla la normalización
+                    customerPhoneForSignalR = To;
+                }
+                
                 await _hubContext.Clients.All.SendAsync("NewSentMessage", new
                 {
                     id = savedId.Value.ToString(),
-                    customerPhone = To,
+                    customerPhone = customerPhoneForSignalR, // Normalizado sin '+' para ConversationState
                     originator = originator,
-                    recipient = To,
+                    recipient = To, // Mantener formato E.164 con '+' para recipient
                     body = Message,
                     direction = 1,
                     messageAt = result.SubmittedUtc.ToString("O")
