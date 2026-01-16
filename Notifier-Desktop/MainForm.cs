@@ -594,10 +594,10 @@ public partial class MainForm : Form
         if (string.IsNullOrEmpty(customerPhoneNormalized))
             customerPhoneNormalized = customerPhone; // Usar original si no se puede normalizar
 
-        // Actualizar conversación en lista
+        // Actualizar o crear conversación en lista (tiempo real)
         if (_conversationsController != null)
         {
-            _conversationsController.UpdateBadges(customerPhoneNormalized, unread: true, pending: true);
+            _conversationsController.UpsertFromSignalR(message, isInbound: true);
             RefreshConversationsList();
         }
 
@@ -656,10 +656,10 @@ public partial class MainForm : Form
         if (string.IsNullOrEmpty(customerPhoneNormalized))
             customerPhoneNormalized = customerPhone; // Usar original si no se puede normalizar
 
-        // Actualizar conversación en lista
+        // Actualizar o crear conversación en lista (tiempo real)
         if (_conversationsController != null)
         {
-            _conversationsController.UpdateBadges(customerPhoneNormalized, unread: false, pending: false);
+            _conversationsController.UpsertFromSignalR(message, isInbound: false);
             RefreshConversationsList();
         }
 

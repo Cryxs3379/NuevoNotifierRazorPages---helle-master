@@ -1,6 +1,7 @@
 using NotifierDesktop.Models;
 using NotifierDesktop.Services;
 using NotifierDesktop.ViewModels;
+using NotifierDesktop.Helpers;
 
 namespace NotifierDesktop.Controllers;
 
@@ -55,6 +56,85 @@ public class ConversationsController
             conv.Unread = unread;
             conv.PendingReply = pending;
         }
+    }
+
+    /// <summary>
+    /// Crea o actualiza una conversación desde un mensaje SignalR (tiempo real)
+    /// </summary>
+    public void UpsertFromSignalR(MessageDto message, bool isInbound)
+    {
+        if (message == null) return;
+
+        // Normalizar phone
+        string normalizedPhone;
+        try
+        {
+            var phoneToNormalize = !string.IsNullOrWhiteSpace(message.CustomerPhone)
+                ? message.CustomerPhone
+                : (isInbound ? message.Originator : message.Recipient);
+            
+            if (string.IsNullOrWhiteSpace(phoneToNormalize))
+            {
+                System.Diagnostics.Debug.WriteLine($"[ConversationsController] Cannot upsert: phone is empty. " +
+                    $"CustomerPhone='{message.CustomerPhone}', Originator='{message.Originator}', Recipient='{message.Recipient}'");
+                return;
+            }
+
+            normalizedPhone = PhoneNormalizer.Normalize(phoneToNormalize);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConversationsController] Failed to normalize phone: {ex.Message}");
+            return;
+        }
+
+        // Buscar conversación existente
+        var conv = Conversations.FirstOrDefault(c => c.Phone == normalizedPhone);
+
+        if (conv == null)
+        {
+            // Crear nueva conversación
+            conv = new ConversationVm
+            {
+                Phone = normalizedPhone,
+                Preview = !string.IsNullOrWhiteSpace(message.Body) ? message.Body : string.Empty,
+                LastMessageAt = message.MessageAt,
+                LastOutboundAt = isInbound ? null : message.MessageAt,
+                Unread = isInbound,
+                PendingReply = isInbound,
+                AssignedTo = null,
+                AssignedUntil = null
+            };
+            Conversations.Add(conv);
+            System.Diagnostics.Debug.WriteLine($"[ConversationsController] Created new conversation from SignalR: Phone={normalizedPhone}, IsInbound={isInbound}");
+        }
+        else
+        {
+            // Actualizar conversación existente
+            if (!string.IsNullOrWhiteSpace(message.Body))
+            {
+                conv.Preview = message.Body;
+            }
+            conv.LastMessageAt = message.MessageAt;
+            
+            if (isInbound)
+            {
+                conv.Unread = true;
+                conv.PendingReply = true;
+            }
+            else
+            {
+                conv.LastOutboundAt = message.MessageAt;
+                // Si hay un outbound más reciente que el último inbound, puede que ya no esté pendiente
+                // Pero no podemos saberlo sin consultar el backend, así que solo actualizamos LastOutboundAt
+                // El backend actualizará PendingReply cuando se consulte
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"[ConversationsController] Updated conversation from SignalR: Phone={normalizedPhone}, IsInbound={isInbound}");
+        }
+
+        // Reordenar lista por LastMessageAt desc
+        RefreshList();
     }
 
     public ConversationVm? GetSelected(string phone)
