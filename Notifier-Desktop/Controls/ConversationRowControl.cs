@@ -209,7 +209,28 @@ public partial class ConversationRowControl : UserControl
         }
 
         _badgeUnread.Visible = _conversation.Unread;
-        _lblBadgePending.Visible = _conversation.PendingReply;
+        
+        // Mostrar badge de estado: "Pendiente" si no se ha respondido, "Atendida" si ya se respondió
+        if (_conversation.PendingReply)
+        {
+            // Pendiente de respuesta
+            _lblBadgePending.Text = "Pendiente";
+            _lblBadgePending.BackColor = Theme.Warning;
+            _lblBadgePending.Visible = true;
+        }
+        else if (_conversation.LastMessageAt.HasValue)
+        {
+            // Ya fue respondida (tiene mensajes pero no está pendiente)
+            _lblBadgePending.Text = "Atendida";
+            _lblBadgePending.BackColor = Theme.AccentGreen;
+            _lblBadgePending.Visible = true;
+        }
+        else
+        {
+            // No hay suficiente información, ocultar badge
+            _lblBadgePending.Visible = false;
+        }
+        
         _lblAssigned.Visible = _conversation.AssignedTo != null && 
             _conversation.AssignedUntil.HasValue && 
             _conversation.AssignedUntil > DateTime.UtcNow;
