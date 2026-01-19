@@ -5,7 +5,7 @@ using NotifierDesktop.Models;
 
 namespace NotifierDesktop.Services;
 
-public class SignalRService : IDisposable
+public class SignalRService : IDisposable, IAsyncDisposable
 {
     private HubConnection? _connection;
     private readonly string _hubUrl;
@@ -44,18 +44,22 @@ public class SignalRService : IDisposable
             try
             {
                 var dto = ConvertToMessageDto(message);
+#if DEBUG
                 Debug.WriteLine($"[SignalR] NewMessage parsed: phone={dto.CustomerPhone} from={dto.Originator} to={dto.Recipient} id={dto.Id} body='{dto.Body?.Substring(0, Math.Min(50, dto.Body?.Length ?? 0))}...'");
+#endif
                 OnNewMessage?.Invoke(dto);
             }
             catch (Exception ex)
             {
+#if DEBUG
                 Debug.WriteLine($"[SignalR] ERROR parsing NewMessage: {ex.GetType().Name}: {ex.Message}");
                 Debug.WriteLine($"[SignalR] StackTrace: {ex.StackTrace}");
                 if (ex.InnerException != null)
                 {
                     Debug.WriteLine($"[SignalR] InnerException: {ex.InnerException.Message}");
                 }
-                // NO tragar el error silenciosamente - siempre loguear
+#endif
+                // NO tragar el error silenciosamente - siempre loguear en DEBUG
             }
         });
 
@@ -64,18 +68,22 @@ public class SignalRService : IDisposable
             try
             {
                 var dto = ConvertToMessageDto(message);
+#if DEBUG
                 Debug.WriteLine($"[SignalR] NewSentMessage parsed: phone={dto.CustomerPhone} from={dto.Originator} to={dto.Recipient} id={dto.Id} body='{dto.Body?.Substring(0, Math.Min(50, dto.Body?.Length ?? 0))}...'");
+#endif
                 OnNewSentMessage?.Invoke(dto);
             }
             catch (Exception ex)
             {
+#if DEBUG
                 Debug.WriteLine($"[SignalR] ERROR parsing NewSentMessage: {ex.GetType().Name}: {ex.Message}");
                 Debug.WriteLine($"[SignalR] StackTrace: {ex.StackTrace}");
                 if (ex.InnerException != null)
                 {
                     Debug.WriteLine($"[SignalR] InnerException: {ex.InnerException.Message}");
                 }
-                // NO tragar el error silenciosamente - siempre loguear
+#endif
+                // NO tragar el error silenciosamente - siempre loguear en DEBUG
             }
         });
 
@@ -138,21 +146,27 @@ public class SignalRService : IDisposable
     {
         if (obj == null)
         {
+#if DEBUG
             Debug.WriteLine("[SignalR] ConvertToMessageDto: obj is null");
+#endif
             return new MessageDto();
         }
 
         // Convertir objeto dinámico a MessageDto
         if (obj is MessageDto dto)
         {
+#if DEBUG
             Debug.WriteLine($"[SignalR] ConvertToMessageDto: obj is already MessageDto");
+#endif
             return dto;
         }
 
         // Si viene como JsonElement, leer propiedades directamente
         if (obj is JsonElement je)
         {
+#if DEBUG
             Debug.WriteLine("[SignalR] ConvertToMessageDto: obj is JsonElement");
+#endif
             return ConvertFromJsonElement(je);
         }
 
@@ -161,8 +175,10 @@ public class SignalRService : IDisposable
         var dtoResult = new MessageDto();
 
         // Logs de diagnóstico: obtener todas las propiedades detectadas
+#if DEBUG
         var detectedProps = type.GetProperties().Select(p => p.Name).ToList();
         Debug.WriteLine($"[SignalR] ConvertToMessageDto - Detected properties: {string.Join(", ", detectedProps)}");
+#endif
 
         // 1. Mapear Id (soporte string GUID y long)
         var idProp = type.GetProperty("id") ?? type.GetProperty("Id");
@@ -179,7 +195,9 @@ public class SignalRService : IDisposable
                     {
                         // Es GUID string, poner 0 sin romper
                         dtoResult.Id = 0;
+#if DEBUG
                         Debug.WriteLine($"[SignalR] Id is GUID string '{idStr}', setting Id=0");
+#endif
                     }
                 }
                 else if (idValue is long idLong2)
@@ -230,7 +248,9 @@ public class SignalRService : IDisposable
         if (dtoResult.MessageAt == default(DateTime))
         {
             dtoResult.MessageAt = DateTime.UtcNow;
+#if DEBUG
             Debug.WriteLine("[SignalR] MessageAt not found, using DateTime.UtcNow");
+#endif
         }
 
         // 6. Mapear Direction (con lógica de inferencia)
@@ -254,13 +274,17 @@ public class SignalRService : IDisposable
             if (hasReceivedUtc)
             {
                 dtoResult.Direction = 0; // Inbound
+#if DEBUG
                 Debug.WriteLine("[SignalR] Direction not found but receivedUtc present, assuming Direction=0 (inbound)");
+#endif
             }
             else
             {
                 // Por defecto, asumir inbound
                 dtoResult.Direction = 0;
+#if DEBUG
                 Debug.WriteLine("[SignalR] Direction not found, defaulting to Direction=0 (inbound)");
+#endif
             }
         }
 
@@ -296,9 +320,11 @@ public class SignalRService : IDisposable
         }
 
         // Logs de diagnóstico: valores mapeados
+#if DEBUG
         Debug.WriteLine($"[SignalR] Mapped values - Id={dtoResult.Id}, Originator='{dtoResult.Originator}', " +
             $"Recipient='{dtoResult.Recipient}', Body='{dtoResult.Body?.Substring(0, Math.Min(50, dtoResult.Body?.Length ?? 0))}...', " +
             $"Direction={dtoResult.Direction}, MessageAt={dtoResult.MessageAt:O}, CustomerPhone='{dtoResult.CustomerPhone}'");
+#endif
 
         return dtoResult;
     }
@@ -320,7 +346,9 @@ public class SignalRService : IDisposable
                     else
                     {
                         dto.Id = 0;
+#if DEBUG
                         Debug.WriteLine($"[SignalR] Id is GUID string '{idStr}', setting Id=0");
+#endif
                     }
                 }
                 else if (idElement.ValueKind == JsonValueKind.Number)
@@ -391,7 +419,9 @@ public class SignalRService : IDisposable
             if (dto.MessageAt == default(DateTime))
             {
                 dto.MessageAt = DateTime.UtcNow;
+#if DEBUG
                 Debug.WriteLine("[SignalR] MessageAt not found in JsonElement, using DateTime.UtcNow");
+#endif
             }
 
             // 7. Mapear Direction
@@ -414,12 +444,16 @@ public class SignalRService : IDisposable
                 if (je.TryGetProperty("receivedUtc", out _) || je.TryGetProperty("ReceivedUtc", out _))
                 {
                     dto.Direction = 0; // Inbound
+#if DEBUG
                     Debug.WriteLine("[SignalR] Direction not found but receivedUtc present, assuming Direction=0 (inbound)");
+#endif
                 }
                 else
                 {
                     dto.Direction = 0; // Default inbound
+#if DEBUG
                     Debug.WriteLine("[SignalR] Direction not found, defaulting to Direction=0 (inbound)");
+#endif
                 }
             }
 
@@ -447,6 +481,7 @@ public class SignalRService : IDisposable
             }
 
             // Log si no se pudo obtener phone
+#if DEBUG
             if (string.IsNullOrWhiteSpace(dto.CustomerPhone))
             {
                 Debug.WriteLine($"[SignalR] WARNING: Could not determine CustomerPhone from JsonElement. " +
@@ -456,24 +491,65 @@ public class SignalRService : IDisposable
             Debug.WriteLine($"[SignalR] JsonElement mapped - Id={dto.Id}, CustomerPhone='{dto.CustomerPhone}', " +
                 $"Originator='{dto.Originator}', Recipient='{dto.Recipient}', Body='{dto.Body?.Substring(0, Math.Min(50, dto.Body?.Length ?? 0))}...', " +
                 $"Direction={dto.Direction}, MessageAt={dto.MessageAt:O}");
+#endif
         }
         catch (Exception ex)
         {
+#if DEBUG
             Debug.WriteLine($"[SignalR] ERROR in ConvertFromJsonElement: {ex.GetType().Name}: {ex.Message}");
             Debug.WriteLine($"[SignalR] StackTrace: {ex.StackTrace}");
+#endif
             // Retornar DTO parcial en lugar de fallar completamente
         }
 
         return dto;
     }
 
+    /// <summary>
+    /// Dispose sincrónico. Para evitar deadlocks, se recomienda usar DisposeAsync en lugar de este método.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
             return;
 
-        StopAsync().GetAwaiter().GetResult();
-        _connection?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        // Usar Task.Run para evitar deadlocks potenciales al esperar async en dispose sincrónico
+        try
+        {
+            Task.Run(async () =>
+            {
+                await StopAsync();
+                if (_connection != null)
+                    await _connection.DisposeAsync();
+            }).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // Ignorar excepciones durante dispose
+        }
+        
+        _disposed = true;
+    }
+
+    /// <summary>
+    /// Dispose asíncrono recomendado para evitar deadlocks.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
+        try
+        {
+            await StopAsync();
+            if (_connection != null)
+                await _connection.DisposeAsync();
+        }
+        catch
+        {
+            // Ignorar excepciones durante dispose
+        }
+        
         _disposed = true;
     }
 }

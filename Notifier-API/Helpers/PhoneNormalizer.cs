@@ -2,6 +2,12 @@ namespace NotifierAPI.Helpers;
 
 /// <summary>
 /// Helper para normalizar números telefónicos al formato canónico (sin '+')
+/// 
+/// NOTA: Esta implementación es ESTRICTA (lanza ArgumentException en caso de error).
+/// Esto es intencional para la API, donde se requiere validación explícita y fallo rápido
+/// si los datos de entrada no son válidos.
+/// 
+/// Para normalización permisiva (retorna string vacío), usar NotifierDesktop.Helpers.PhoneNormalizer.
 /// </summary>
 public static class PhoneNormalizer
 {
@@ -10,7 +16,7 @@ public static class PhoneNormalizer
     /// </summary>
     /// <param name="phone">Número telefónico a normalizar</param>
     /// <returns>Número normalizado sin '+'</returns>
-    /// <exception cref="ArgumentException">Si el teléfono es null o vacío después de normalizar</exception>
+    /// <exception cref="ArgumentException">Si el teléfono es null o vacío después de normalizar (comportamiento estricto para API)</exception>
     public static string NormalizePhone(string? phone)
     {
         if (phone == null)

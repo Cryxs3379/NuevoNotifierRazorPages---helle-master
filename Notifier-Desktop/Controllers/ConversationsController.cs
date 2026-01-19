@@ -33,14 +33,18 @@ public class ConversationsController
                         ? PhoneNormalizer.Normalize(dto.CustomerPhone)
                         : string.Empty;
                     
+#if DEBUG
                     if (string.IsNullOrEmpty(normalizedPhone) && !string.IsNullOrWhiteSpace(dto.CustomerPhone))
                     {
                         System.Diagnostics.Debug.WriteLine($"[ConversationsController] Failed to normalize phone in LoadConversationsAsync: '{dto.CustomerPhone}'");
                     }
+#endif
                 }
                 catch (Exception ex)
                 {
+#if DEBUG
                     System.Diagnostics.Debug.WriteLine($"[ConversationsController] Exception normalizing phone '{dto.CustomerPhone}': {ex.Message}");
+#endif
                     normalizedPhone = string.Empty;
                 }
 
@@ -65,7 +69,9 @@ public class ConversationsController
                 .Select(g => g.OrderByDescending(x => x.LastMessageAt ?? DateTime.MinValue).First())
                 .ToList();
 
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[ConversationsController] LoadConversationsAsync: Loaded {Conversations.Count} unique conversations");
+#endif
         }
         else
         {
@@ -90,13 +96,17 @@ public class ConversationsController
             normalizedPhone = PhoneNormalizer.Normalize(phone);
             if (string.IsNullOrEmpty(normalizedPhone))
             {
+#if DEBUG
                 System.Diagnostics.Debug.WriteLine($"[ConversationsController] Cannot update badges: phone '{phone}' could not be normalized");
+#endif
                 return;
             }
         }
         catch (Exception ex)
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[ConversationsController] Exception normalizing phone '{phone}' in UpdateBadges: {ex.Message}");
+#endif
             return;
         }
 
@@ -106,10 +116,12 @@ public class ConversationsController
             conv.Unread = unread;
             conv.PendingReply = pending;
         }
+#if DEBUG
         else
         {
             System.Diagnostics.Debug.WriteLine($"[ConversationsController] Conversation not found for UpdateBadges: normalizedPhone='{normalizedPhone}'");
         }
+#endif
     }
 
     /// <summary>
@@ -129,8 +141,10 @@ public class ConversationsController
             
             if (string.IsNullOrWhiteSpace(phoneToNormalize))
             {
+#if DEBUG
                 System.Diagnostics.Debug.WriteLine($"[ConversationsController] Cannot upsert: phone is empty. " +
                     $"CustomerPhone='{message.CustomerPhone}', Originator='{message.Originator}', Recipient='{message.Recipient}'");
+#endif
                 return;
             }
 
@@ -138,7 +152,9 @@ public class ConversationsController
         }
         catch (Exception ex)
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[ConversationsController] Failed to normalize phone: {ex.Message}");
+#endif
             return;
         }
 
@@ -158,7 +174,9 @@ public class ConversationsController
             if (duplicateWithPlus != null)
             {
                 // Encontrar duplicado con '+', unificar: actualizar el duplicado y eliminar
+#if DEBUG
                 System.Diagnostics.Debug.WriteLine($"[ConversationsController] Found duplicate with '+': '{variantWithPlus}', unifying to '{normalizedPhone}'");
+#endif
                 conv = duplicateWithPlus;
                 conv.Phone = normalizedPhone; // Normalizar el teléfono
             }
@@ -184,14 +202,18 @@ public class ConversationsController
                 AssignedUntil = null
             };
             Conversations.Add(conv);
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[ConversationsController] Created new conversation from SignalR: Phone={normalizedPhone}, IsInbound={isInbound}");
+#endif
         }
         else
         {
             // Asegurar que el teléfono está normalizado
             if (conv.Phone != normalizedPhone)
             {
+#if DEBUG
                 System.Diagnostics.Debug.WriteLine($"[ConversationsController] Normalizing existing conversation phone: '{conv.Phone}' -> '{normalizedPhone}'");
+#endif
                 conv.Phone = normalizedPhone;
             }
 
@@ -215,7 +237,9 @@ public class ConversationsController
                 // El backend actualizará PendingReply cuando se consulte
             }
             
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[ConversationsController] Updated conversation from SignalR: Phone={normalizedPhone}, IsInbound={isInbound}");
+#endif
         }
 
         // Deduplicar después de upsert (por si quedaron duplicados)
@@ -239,7 +263,9 @@ public class ConversationsController
         }
         catch (Exception ex)
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[ConversationsController] Exception normalizing phone '{phone}' in GetSelected: {ex.Message}");
+#endif
             return null;
         }
 
@@ -257,9 +283,11 @@ public class ConversationsController
             .Select(g => g.OrderByDescending(x => x.LastMessageAt ?? DateTime.MinValue).First())
             .ToList();
         
+#if DEBUG
         if (Conversations.Count < beforeCount)
         {
             System.Diagnostics.Debug.WriteLine($"[ConversationsController] Deduplicated conversations: {beforeCount} -> {Conversations.Count}");
         }
+#endif
     }
 }

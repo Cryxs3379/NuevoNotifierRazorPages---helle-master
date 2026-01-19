@@ -3,6 +3,12 @@ namespace NotifierDesktop.Helpers;
 /// <summary>
 /// Helper para normalizar números telefónicos al formato canónico (sin '+')
 /// Formato canónico: SIEMPRE sin '+', sin espacios, sin guiones, sin paréntesis
+/// 
+/// NOTA: Esta implementación es PERMISIVA (retorna string vacío en lugar de lanzar excepciones).
+/// Esto es intencional para la UI de Desktop, donde es preferible manejar errores de forma silenciosa
+/// en lugar de interrumpir la experiencia del usuario.
+/// 
+/// Para validación estricta, usar NotifierAPI.Helpers.PhoneNormalizer que lanza ArgumentException.
 /// </summary>
 public static class PhoneNormalizer
 {
@@ -10,7 +16,7 @@ public static class PhoneNormalizer
     /// Normaliza un número telefónico al formato canónico (sin '+')
     /// </summary>
     /// <param name="input">Número telefónico en cualquier formato</param>
-    /// <returns>Número normalizado sin '+', o string vacío si no se puede normalizar</returns>
+    /// <returns>Número normalizado sin '+', o string vacío si no se puede normalizar (comportamiento permisivo para UI)</returns>
     public static string Normalize(string? input)
     {
         if (string.IsNullOrWhiteSpace(input))

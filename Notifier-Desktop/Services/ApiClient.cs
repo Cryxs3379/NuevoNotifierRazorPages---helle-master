@@ -28,8 +28,11 @@ public class ApiClient
                 return await response.Content.ReadFromJsonAsync<HealthResponse>(ct);
             }
         }
-        catch
+        catch (Exception ex)
         {
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[ApiClient] Error in GetHealthAsync: {ex.Message}");
+#endif
             // Retornar null en caso de error
         }
         return null;
@@ -55,9 +58,18 @@ public class ApiClient
             {
                 return await response.Content.ReadFromJsonAsync<MessagesResponse>(ct);
             }
+#if DEBUG
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[ApiClient] GetMessagesAsync failed with status: {response.StatusCode}");
+            }
+#endif
         }
-        catch
+        catch (Exception ex)
         {
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[ApiClient] Error in GetMessagesAsync: {ex.Message}");
+#endif
             // Retornar null en caso de error
         }
         return null;
@@ -157,9 +169,18 @@ public class ApiClient
             {
                 return await response.Content.ReadFromJsonAsync<ConversationsResponse>(ct);
             }
+#if DEBUG
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[ApiClient] GetConversationsAsync failed with status: {response.StatusCode}");
+            }
+#endif
         }
-        catch
+        catch (Exception ex)
         {
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[ApiClient] Error in GetConversationsAsync: {ex.Message}");
+#endif
             // Retornar null en caso de error
         }
         return null;
@@ -175,8 +196,11 @@ public class ApiClient
                 ct);
             return response.IsSuccessStatusCode;
         }
-        catch
+        catch (Exception ex)
         {
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[ApiClient] Error in MarkConversationReadAsync: {ex.Message}");
+#endif
             return false;
         }
     }
@@ -199,9 +223,18 @@ public class ApiClient
             {
                 return await response.Content.ReadFromJsonAsync<ClaimResponse>(ct);
             }
+#if DEBUG
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[ApiClient] ClaimConversationAsync failed with status: {response.StatusCode}");
+            }
+#endif
         }
-        catch
+        catch (Exception ex)
         {
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[ApiClient] Error in ClaimConversationAsync: {ex.Message}");
+#endif
             // Retornar null en caso de error
         }
         return null;

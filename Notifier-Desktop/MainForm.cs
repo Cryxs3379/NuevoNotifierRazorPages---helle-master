@@ -32,6 +32,9 @@ public partial class MainForm : Form
 
     private string? _selectedPhone;
     private bool _isWindowFocused = true;
+    
+    // Cache de controles de conversación para reutilización (optimización de performance)
+    private readonly Dictionary<string, ConversationRowControl> _conversationControls = new();
 
     public MainForm(AppSettings settings)
     {
@@ -118,6 +121,10 @@ public partial class MainForm : Form
             BackColor = Theme.Background
         };
         Theme.EnableDoubleBuffer(_flowReceived);
+        
+        // Suscribir a SizeChanged para ajustar anchos de filas al resize
+        _flowReceived.SizeChanged += (s, e) => UpdateRowWidths();
+        
         conversationsPanel.Controls.Add(_flowReceived);
         conversationsPanel.Controls.Add(_txtSearch);
 
@@ -334,30 +341,113 @@ public partial class MainForm : Form
         // Suspend layout for performance
         _flowReceived.SuspendLayout();
 
-        // Limpiar lista
-        _flowReceived.Controls.Clear();
+        // Obtener conjunto de teléfonos actuales para determinar qué controles mantener/eliminar
+        var currentPhones = new HashSet<string>(_conversationsController.Conversations.Select(c => c.Phone));
+        var phonesToRemove = new List<string>();
 
+        // Identificar controles a eliminar (conversaciones que ya no existen)
+        foreach (var kvp in _conversationControls.ToList())
+        {
+            if (!currentPhones.Contains(kvp.Key))
+            {
+                // Eliminar control del panel y del diccionario
+                _flowReceived.Controls.Remove(kvp.Value);
+                _conversationControls.Remove(kvp.Key);
+            }
+        }
+
+        // Calcular ancho objetivo para las filas
+        var scrollbarWidth = _flowReceived.Controls.Count > 0 && _flowReceived.VerticalScroll.Visible 
+            ? SystemInformation.VerticalScrollBarWidth 
+            : 0;
+        var targetWidth = Math.Max(200, _flowReceived.ClientSize.Width - scrollbarWidth - 16);
+
+        // Actualizar o crear controles para conversaciones actuales
         foreach (var conv in _conversationsController.Conversations)
         {
-            var rowControl = new ConversationRowControl
+            if (_conversationControls.TryGetValue(conv.Phone, out var existingControl))
             {
-                Conversation = conv,
-                Width = Math.Max(200, _flowReceived.Width - 25),
-                Margin = new Padding(0, 0, 0, Theme.Spacing4)
-            };
-            rowControl.IsSelected = _selectedPhone == conv.Phone;
-            rowControl.ConversationSelected += async (s, e) => await ConversationRowControl_ConversationSelected(conv.Phone);
+                // Reutilizar control existente - solo actualizar datos y selección
+                existingControl.Conversation = conv;
+                existingControl.IsSelected = _selectedPhone == conv.Phone;
+                existingControl.Width = targetWidth;
+            }
+            else
+            {
+                // Crear nuevo control para conversación nueva
+                var rowControl = new ConversationRowControl
+                {
+                    Conversation = conv,
+                    Width = targetWidth,
+                    Margin = new Padding(0, 0, 0, Theme.Spacing4)
+                };
+                rowControl.IsSelected = _selectedPhone == conv.Phone;
+                rowControl.ConversationSelected += async (s, e) => await ConversationRowControl_ConversationSelected(conv.Phone);
 
-            _flowReceived.Controls.Add(rowControl);
+                _conversationControls[conv.Phone] = rowControl;
+                _flowReceived.Controls.Add(rowControl);
+            }
+        }
+
+        // Asegurar orden correcto (ordenar controles según orden de conversaciones)
+        var conversationOrder = _conversationsController.Conversations
+            .Select((c, idx) => new { Phone = c.Phone, Index = idx })
+            .ToDictionary(x => x.Phone, x => x.Index);
+
+        var controlsList = _flowReceived.Controls.Cast<ConversationRowControl>().ToList();
+        controlsList.Sort((a, b) =>
+        {
+            var idxA = conversationOrder.GetValueOrDefault(a.Conversation?.Phone ?? "", int.MaxValue);
+            var idxB = conversationOrder.GetValueOrDefault(b.Conversation?.Phone ?? "", int.MaxValue);
+            return idxA.CompareTo(idxB);
+        });
+
+        // Reordenar controles en el panel si es necesario
+        for (int i = 0; i < controlsList.Count; i++)
+        {
+            if (_flowReceived.Controls[i] != controlsList[i])
+            {
+                _flowReceived.Controls.SetChildIndex(controlsList[i], i);
+            }
         }
         
         // Resume layout
         _flowReceived.ResumeLayout(true);
     }
 
+    /// <summary>
+    /// Ajusta el ancho de todas las filas de conversación al resize del panel
+    /// </summary>
+    private void UpdateRowWidths()
+    {
+        if (InvokeRequired)
+        {
+            Invoke(new Action(UpdateRowWidths));
+            return;
+        }
+
+        if (_flowReceived == null || _flowReceived.Controls.Count == 0)
+            return;
+
+        var scrollbarWidth = _flowReceived.VerticalScroll.Visible 
+            ? SystemInformation.VerticalScrollBarWidth 
+            : 0;
+        var targetWidth = Math.Max(200, _flowReceived.ClientSize.Width - scrollbarWidth - 16);
+
+        foreach (Control ctrl in _flowReceived.Controls)
+        {
+            if (ctrl is ConversationRowControl row)
+            {
+                row.Width = targetWidth;
+            }
+        }
+    }
+
     private async Task ConversationRowControl_ConversationSelected(string phone)
     {
+#if DEBUG
         System.Diagnostics.Debug.WriteLine($"[MainForm] ConversationRowControl_ConversationSelected called with phone: '{phone}'");
+#endif
         
         if (_selectedPhone == phone) return;
 
@@ -372,12 +462,16 @@ public partial class MainForm : Form
         var phoneNormalized = PhoneNormalizer.Normalize(phone);
         if (string.IsNullOrEmpty(phoneNormalized))
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[MainForm] ERROR: Could not normalize phone '{phone}'");
+#endif
             ShowError($"Número telefónico inválido: {phone}");
             return;
         }
 
+#if DEBUG
         System.Diagnostics.Debug.WriteLine($"[MainForm] Phone normalized: '{phone}' -> '{phoneNormalized}'");
+#endif
 
         // Claim conversación (usar phone normalizado)
         if (_apiClient != null && !string.IsNullOrWhiteSpace(_settings.OperatorName))
@@ -388,9 +482,13 @@ public partial class MainForm : Form
         // Cargar chat (usar phone normalizado para API, pero el endpoint ya es tolerante)
         if (_chatController != null)
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[MainForm] Calling LoadChatAsync with normalized phone: '{phoneNormalized}'");
+#endif
             await _chatController.LoadChatAsync(phoneNormalized);
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[MainForm] LoadChatAsync completed. ChatController has {_chatController.Messages.Count} messages");
+#endif
             RefreshChat();
         }
 
@@ -434,23 +532,31 @@ public partial class MainForm : Form
 
         if (_chatController == null)
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine("[MainForm] RefreshChat: _chatController is null");
+#endif
             return;
         }
 
+#if DEBUG
         System.Diagnostics.Debug.WriteLine($"[MainForm] RefreshChat: _chatController.Messages.Count = {_chatController.Messages.Count}");
+#endif
 
         _flowChat.Controls.Clear();
 
         if (_chatController.Messages.Count == 0)
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine("[MainForm] RefreshChat: No messages to display");
+#endif
             return; // No hacer scroll si no hay mensajes
         }
 
         foreach (var msg in _chatController.Messages)
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[MainForm] Adding message bubble: Id={msg.Id}, Direction={msg.Direction}, Text='{msg.Text?.Substring(0, Math.Min(30, msg.Text?.Length ?? 0))}...'");
+#endif
             
             var bubble = new MessageBubbleControl
             {
@@ -466,10 +572,14 @@ public partial class MainForm : Form
             
             _flowChat.Controls.Add(bubble);
             
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[MainForm] Bubble added: Size={bubble.Size}, Visible={bubble.Visible}, Location={bubble.Location}");
+#endif
         }
 
+#if DEBUG
         System.Diagnostics.Debug.WriteLine($"[MainForm] RefreshChat: Added {_flowChat.Controls.Count} bubbles to _flowChat");
+#endif
 
         // Auto-scroll al final solo si hay controles
         if (_flowChat.Controls.Count > 0)
@@ -560,7 +670,8 @@ public partial class MainForm : Form
         {
             e.Handled = true;
             e.SuppressKeyPress = true;
-            BtnSend_Click().GetAwaiter().GetResult();
+            // Fire-and-forget: no esperar async en event handler sincrónico para evitar deadlocks
+            _ = BtnSend_Click();
         }
     }
 
@@ -605,8 +716,10 @@ public partial class MainForm : Form
         // Log de warning si CustomerPhone sigue vacío después del fix
         if (string.IsNullOrWhiteSpace(customerPhone))
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: CustomerPhone is empty for NewMessage. " +
                 $"Originator='{message.Originator}', Recipient='{message.Recipient}', Direction={message.Direction}");
+#endif
             return; // No procesar si no hay customerPhone
         }
 
@@ -667,8 +780,10 @@ public partial class MainForm : Form
         // Log de warning si CustomerPhone sigue vacío después del fix
         if (string.IsNullOrWhiteSpace(customerPhone))
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: CustomerPhone is empty for NewSentMessage. " +
                 $"Originator='{message.Originator}', Recipient='{message.Recipient}', Direction={message.Direction}");
+#endif
             return; // No procesar si no hay customerPhone
         }
 

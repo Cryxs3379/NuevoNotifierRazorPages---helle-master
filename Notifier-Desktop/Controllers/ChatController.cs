@@ -18,7 +18,9 @@ public class ChatController
 
     public async Task LoadChatAsync(string phone)
     {
+#if DEBUG
         System.Diagnostics.Debug.WriteLine($"[ChatController] LoadChatAsync called with phone: '{phone}'");
+#endif
         
         CurrentPhone = phone;
         Messages.Clear();
@@ -26,6 +28,7 @@ public class ChatController
 
         var messages = await _apiClient.GetConversationMessagesAsync(phone, take: 200);
         
+#if DEBUG
         System.Diagnostics.Debug.WriteLine($"[ChatController] GetConversationMessagesAsync returned {messages?.Count ?? 0} messages");
         
         if (messages != null && messages.Count > 0)
@@ -40,19 +43,24 @@ public class ChatController
         {
             System.Diagnostics.Debug.WriteLine($"[ChatController] WARNING: GetConversationMessagesAsync returned empty list");
         }
+#endif
         
         if (messages != null)
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[ChatController] Processing {messages.Count} messages from API");
+#endif
             
             foreach (var msg in messages)
             {
+#if DEBUG
                 System.Diagnostics.Debug.WriteLine($"[ChatController] Mapping message: Id={msg.Id}, Direction={msg.Direction}, Originator='{msg.Originator}', Recipient='{msg.Recipient}', Body length={msg.Body?.Length ?? 0}");
                 
                 if (msg.Id == 0)
                 {
                     System.Diagnostics.Debug.WriteLine($"[ChatController] WARNING: Message has Id=0, this may indicate a mapping issue");
                 }
+#endif
                 
                 if (!_messageIds.Contains(msg.Id))
                 {
@@ -66,19 +74,25 @@ public class ChatController
                         To = msg.Recipient
                     };
                     
+#if DEBUG
                     System.Diagnostics.Debug.WriteLine($"[ChatController] Created MessageVm: Id={messageVm.Id}, Direction={messageVm.Direction}, Text length={messageVm.Text?.Length ?? 0}");
+#endif
                     
                     Messages.Add(messageVm);
                     _messageIds.Add(msg.Id);
                 }
+#if DEBUG
                 else
                 {
                     System.Diagnostics.Debug.WriteLine($"[ChatController] Skipping duplicate message Id={msg.Id}");
                 }
+#endif
             }
         }
         
+#if DEBUG
         System.Diagnostics.Debug.WriteLine($"[ChatController] LoadChatAsync completed. Total messages in controller: {Messages.Count}");
+#endif
     }
 
     public void AddMessage(MessageVm message)

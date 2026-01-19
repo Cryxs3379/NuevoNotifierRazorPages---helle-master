@@ -64,7 +64,9 @@ public partial class MessageBubbleControl : UserControl
     {
         if (_message == null)
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine("[MessageBubbleControl] UpdateUI called with null message");
+#endif
             _lblText.Text = "";
             _lblTime.Text = "";
             return;
@@ -72,7 +74,9 @@ public partial class MessageBubbleControl : UserControl
 
         if (string.IsNullOrWhiteSpace(_message.Text))
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[MessageBubbleControl] WARNING: Message text is empty. Id={_message.Id}, Direction={_message.Direction}");
+#endif
             _lblText.Text = "(mensaje vacío)";
         }
         else
@@ -129,7 +133,9 @@ public partial class MessageBubbleControl : UserControl
         _bubblePanel.Region = System.Drawing.Region.FromHrgn(
             CreateRoundRectRgn(0, 0, _bubblePanel.Width, _bubblePanel.Height, 10, 10));
         
+#if DEBUG
         System.Diagnostics.Debug.WriteLine($"[MessageBubbleControl] UpdateUI completed: UserControl Size={Size}, BubblePanel Size={_bubblePanel.Size}, Visible={Visible}");
+#endif
     }
 
     private string FormatTime(DateTime dateTime)
