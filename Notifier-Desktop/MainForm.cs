@@ -3,6 +3,7 @@ using NotifierDesktop.Controls;
 using NotifierDesktop.Helpers;
 using NotifierDesktop.Models;
 using NotifierDesktop.Services;
+using NotifierDesktop.UI;
 using NotifierDesktop.ViewModels;
 
 namespace NotifierDesktop;
@@ -51,36 +52,44 @@ public partial class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         WindowState = FormWindowState.Maximized;
         FormBorderStyle = FormBorderStyle.Sizable;
+        BackColor = Theme.Background;
+        
+        Theme.EnableDoubleBuffer(this);
 
         // Barra superior con estados
         var statusPanel = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 30,
-            BackColor = Color.LightGray
+            Height = 36,
+            BackColor = Theme.Surface,
+            Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8)
         };
+        Theme.EnableDoubleBuffer(statusPanel);
 
         _lblApiStatus = new Label
         {
             Text = "API: Desconectado",
-            ForeColor = Color.Red,
-            Location = new Point(10, 6),
+            ForeColor = Theme.Danger,
+            Font = Theme.Small,
+            Location = new Point(Theme.Spacing12, 10),
             AutoSize = true
         };
 
         _lblSignalRStatus = new Label
         {
             Text = "SignalR: Desconectado",
-            ForeColor = Color.Red,
-            Location = new Point(150, 6),
+            ForeColor = Theme.Danger,
+            Font = Theme.Small,
+            Location = new Point(150, 10),
             AutoSize = true
         };
 
         _lblError = new Label
         {
             Text = "",
-            ForeColor = Color.Red,
-            Location = new Point(350, 6),
+            ForeColor = Theme.Danger,
+            Font = Theme.Small,
+            Location = new Point(350, 10),
             AutoSize = true
         };
 
@@ -89,53 +98,74 @@ public partial class MainForm : Form
         // TabControl principal
         _tabControl = new TabControl
         {
-            Dock = DockStyle.Fill
+            Dock = DockStyle.Fill,
+            Appearance = TabAppearance.FlatButtons,
+            Font = Theme.Body
         };
+        Theme.EnableDoubleBuffer(_tabControl);
 
         // Tab "Recibidos"
         _tabReceived = new TabPage("Recibidos");
-        var receivedPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(5) };
+        var receivedPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Theme.Spacing8) };
+        receivedPanel.BackColor = Theme.Background;
+        Theme.EnableDoubleBuffer(receivedPanel);
+        
         _txtSearchReceived = new TextBox
         {
             Dock = DockStyle.Top,
-            Height = 30,
-            Text = "Buscar por teléfono..."
+            Height = 36,
+            Text = "Buscar por teléfono...",
+            Font = Theme.Body,
+            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = Theme.Surface
         };
-        _txtSearchReceived.GotFocus += (s, e) => { if (_txtSearchReceived.Text == "Buscar por teléfono...") _txtSearchReceived.Clear(); };
-        _txtSearchReceived.LostFocus += (s, e) => { if (string.IsNullOrWhiteSpace(_txtSearchReceived.Text)) _txtSearchReceived.Text = "Buscar por teléfono..."; };
-        _txtSearchReceived.ForeColor = Color.Gray;
+        _txtSearchReceived.GotFocus += (s, e) => { if (_txtSearchReceived.Text == "Buscar por teléfono...") { _txtSearchReceived.Clear(); _txtSearchReceived.ForeColor = Theme.TextPrimary; } };
+        _txtSearchReceived.LostFocus += (s, e) => { if (string.IsNullOrWhiteSpace(_txtSearchReceived.Text)) { _txtSearchReceived.Text = "Buscar por teléfono..."; _txtSearchReceived.ForeColor = Theme.TextSecondary; } };
+        _txtSearchReceived.ForeColor = Theme.TextSecondary;
         _txtSearchReceived.TextChanged += async (s, e) => await SearchReceivedAsync();
+        
         _flowReceived = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
-            AutoScroll = true
+            AutoScroll = true,
+            BackColor = Theme.Background
         };
+        Theme.EnableDoubleBuffer(_flowReceived);
         receivedPanel.Controls.Add(_flowReceived);
         receivedPanel.Controls.Add(_txtSearchReceived);
         _tabReceived.Controls.Add(receivedPanel);
 
         // Tab "Enviados"
         _tabSent = new TabPage("Enviados");
-        var sentPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(5) };
+        var sentPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Theme.Spacing8) };
+        sentPanel.BackColor = Theme.Background;
+        Theme.EnableDoubleBuffer(sentPanel);
+        
         _txtSearchSent = new TextBox
         {
             Dock = DockStyle.Top,
-            Height = 30,
-            Text = "Buscar por teléfono..."
+            Height = 36,
+            Text = "Buscar por teléfono...",
+            Font = Theme.Body,
+            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = Theme.Surface
         };
-        _txtSearchSent.GotFocus += (s, e) => { if (_txtSearchSent.Text == "Buscar por teléfono...") _txtSearchSent.Clear(); };
-        _txtSearchSent.LostFocus += (s, e) => { if (string.IsNullOrWhiteSpace(_txtSearchSent.Text)) _txtSearchSent.Text = "Buscar por teléfono..."; };
-        _txtSearchSent.ForeColor = Color.Gray;
+        _txtSearchSent.GotFocus += (s, e) => { if (_txtSearchSent.Text == "Buscar por teléfono...") { _txtSearchSent.Clear(); _txtSearchSent.ForeColor = Theme.TextPrimary; } };
+        _txtSearchSent.LostFocus += (s, e) => { if (string.IsNullOrWhiteSpace(_txtSearchSent.Text)) { _txtSearchSent.Text = "Buscar por teléfono..."; _txtSearchSent.ForeColor = Theme.TextSecondary; } };
+        _txtSearchSent.ForeColor = Theme.TextSecondary;
         _txtSearchSent.TextChanged += async (s, e) => await SearchSentAsync();
+        
         _flowSent = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
-            AutoScroll = true
+            AutoScroll = true,
+            BackColor = Theme.Background
         };
+        Theme.EnableDoubleBuffer(_flowSent);
         sentPanel.Controls.Add(_flowSent);
         sentPanel.Controls.Add(_txtSearchSent);
         _tabSent.Controls.Add(sentPanel);
@@ -143,12 +173,30 @@ public partial class MainForm : Form
         _tabControl.TabPages.Add(_tabReceived);
         _tabControl.TabPages.Add(_tabSent);
 
-        // SplitContainer principal
+        // SplitContainer principal (fixed width, no resizable)
         _splitContainer = new SplitContainer
         {
             Dock = DockStyle.Fill,
-            SplitterDistance = 400,
-            FixedPanel = FixedPanel.Panel1
+            FixedPanel = FixedPanel.Panel1,
+            IsSplitterFixed = true,
+            SplitterWidth = 1,
+            Panel1MinSize = 400
+        };
+        
+        // Set splitter distance and panel2 minsize after form has size
+        Load += (s, e) =>
+        {
+            _splitContainer.Panel2MinSize = 600;
+            _splitContainer.SplitterDistance = 400;
+        };
+        
+        _splitContainer.SplitterMoved += (s, e) =>
+        {
+            // Prevent splitter movement by resetting distance
+            if (_splitContainer.SplitterDistance != 400)
+            {
+                _splitContainer.SplitterDistance = 400;
+            }
         };
 
         // Panel izquierdo: TabControl con conversaciones
@@ -161,25 +209,27 @@ public partial class MainForm : Form
         _chatHeader = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 50,
-            BackColor = Color.FromArgb(240, 242, 245),
-            Padding = new Padding(15, 10, 15, 10)
+            Height = 64,
+            BackColor = Theme.Surface,
+            Padding = new Padding(Theme.Spacing16, Theme.Spacing12, Theme.Spacing16, Theme.Spacing12)
         };
+        Theme.EnableDoubleBuffer(_chatHeader);
 
         _lblChatPhone = new Label
         {
             Text = "Seleccione una conversación",
-            Font = new Font(Font.FontFamily, 12, FontStyle.Bold),
-            Location = new Point(15, 12),
-            AutoSize = true
+            Font = Theme.Title,
+            Location = new Point(Theme.Spacing16, Theme.Spacing12),
+            AutoSize = true,
+            ForeColor = Theme.TextPrimary
         };
 
         _lblAssignedTo = new Label
         {
             Text = "",
-            Font = new Font(Font.FontFamily, 9),
-            ForeColor = Color.DarkGreen,
-            Location = new Point(15, 32),
+            Font = Theme.Small,
+            ForeColor = Theme.Success,
+            Location = new Point(Theme.Spacing16, 36),
             AutoSize = true
         };
 
@@ -193,18 +243,20 @@ public partial class MainForm : Form
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
             AutoScroll = true,
-            BackColor = Color.FromArgb(239, 239, 239),
-            Padding = new Padding(10, 10, 10, 10)
+            BackColor = Theme.Background,
+            Padding = new Padding(Theme.Spacing12)
         };
+        Theme.EnableDoubleBuffer(_flowChat);
 
         // Panel composer
         var composerPanel = new Panel
         {
             Dock = DockStyle.Bottom,
             Height = 80,
-            BackColor = Color.White,
-            Padding = new Padding(10)
+            BackColor = Theme.Surface,
+            Padding = new Padding(Theme.Spacing12)
         };
+        Theme.EnableDoubleBuffer(composerPanel);
 
         _txtMessage = new TextBox
         {
@@ -212,7 +264,11 @@ public partial class MainForm : Form
             Multiline = true,
             ScrollBars = ScrollBars.Vertical,
             AcceptsReturn = true,
-            Font = new Font(Font.FontFamily, 10)
+            Font = Theme.Body,
+            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = Theme.Surface,
+            ForeColor = Theme.TextPrimary,
+            Margin = new Padding(0, 0, Theme.Spacing8, 0)
         };
         _txtMessage.KeyDown += TxtMessage_KeyDown;
 
@@ -220,15 +276,20 @@ public partial class MainForm : Form
         {
             Text = "Enviar",
             Dock = DockStyle.Right,
-            Width = 100,
-            Height = 60,
+            Width = 110,
+            Height = 56,
             Enabled = false,
-            BackColor = Color.FromArgb(0, 122, 255),
+            BackColor = Theme.AccentBlue,
             ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat
+            FlatStyle = FlatStyle.Flat,
+            Font = Theme.BodyBold,
+            Cursor = Cursors.Hand
         };
         _btnSend.FlatAppearance.BorderSize = 0;
+        _btnSend.FlatAppearance.MouseOverBackColor = Theme.AccentBlueHover;
+        _btnSend.FlatAppearance.MouseDownBackColor = Color.FromArgb(0, 82, 215);
         _btnSend.Click += async (s, e) => await BtnSend_Click();
+        Theme.EnableDoubleBuffer(_btnSend);
 
         composerPanel.Controls.Add(_txtMessage);
         composerPanel.Controls.Add(_btnSend);
@@ -265,7 +326,13 @@ public partial class MainForm : Form
             _signalRService.OnReconnecting += SignalRService_OnReconnecting;
         }
 
-        Load += async (s, e) => await InitializeAsync();
+        Load += (s, e) =>
+        {
+            // Set splitter distance after form has size
+            _splitContainer.Panel2MinSize = 600;
+            _splitContainer.SplitterDistance = 400;
+            InitializeAsync().GetAwaiter();
+        };
     }
 
     private async Task InitializeAsync()
@@ -316,6 +383,10 @@ public partial class MainForm : Form
 
         if (_conversationsController == null) return;
 
+        // Suspend layout for performance
+        _flowReceived.SuspendLayout();
+        _flowSent.SuspendLayout();
+
         // Limpiar listas
         _flowReceived.Controls.Clear();
         _flowSent.Controls.Clear();
@@ -326,8 +397,9 @@ public partial class MainForm : Form
             {
                 Conversation = conv,
                 Width = Math.Max(200, _flowReceived.Width - 25),
-                Margin = new Padding(0, 0, 0, 2)
+                Margin = new Padding(0, 0, 0, Theme.Spacing4)
             };
+            rowControl.IsSelected = _selectedPhone == conv.Phone;
             rowControl.ConversationSelected += async (s, e) => await ConversationRowControl_ConversationSelected(conv.Phone);
 
             // Añadir a ambos tabs (por ahora, luego filtrar por pending/unread)
@@ -340,12 +412,17 @@ public partial class MainForm : Form
                 {
                     Conversation = conv,
                     Width = Math.Max(200, _flowSent.Width - 25),
-                    Margin = new Padding(0, 0, 0, 2)
+                    Margin = new Padding(0, 0, 0, Theme.Spacing4)
                 };
+                rowControlSent.IsSelected = _selectedPhone == conv.Phone;
                 rowControlSent.ConversationSelected += async (s, e) => await ConversationRowControl_ConversationSelected(conv.Phone);
                 _flowSent.Controls.Add(rowControlSent);
             }
         }
+        
+        // Resume layout
+        _flowReceived.ResumeLayout(true);
+        _flowSent.ResumeLayout(true);
     }
 
     private async Task ConversationRowControl_ConversationSelected(string phone)
@@ -354,7 +431,12 @@ public partial class MainForm : Form
         
         if (_selectedPhone == phone) return;
 
+        // Update selection state
+        var previousPhone = _selectedPhone;
         _selectedPhone = phone;
+        
+        // Update row selection states
+        UpdateRowSelection(previousPhone, phone);
 
         // Normalizar phone para API (pero mantener original para display)
         var phoneNormalized = PhoneNormalizer.Normalize(phone);
@@ -391,6 +473,33 @@ public partial class MainForm : Form
         // Actualizar header (mostrar número normalizado)
         UpdateChatHeader(phoneNormalized);
         _btnSend.Enabled = true;
+        _btnSend.BackColor = Theme.AccentBlue;
+        _txtMessage.Enabled = true;
+    }
+    
+    private void UpdateRowSelection(string? previousPhone, string newPhone)
+    {
+        if (InvokeRequired)
+        {
+            Invoke(new Action<string?, string>(UpdateRowSelection), previousPhone, newPhone);
+            return;
+        }
+        
+        foreach (Control ctrl in _flowReceived.Controls)
+        {
+            if (ctrl is ConversationRowControl row)
+            {
+                row.IsSelected = row.Conversation?.Phone == newPhone;
+            }
+        }
+        
+        foreach (Control ctrl in _flowSent.Controls)
+        {
+            if (ctrl is ConversationRowControl row)
+            {
+                row.IsSelected = row.Conversation?.Phone == newPhone;
+            }
+        }
     }
 
     private void RefreshChat()
@@ -495,6 +604,7 @@ public partial class MainForm : Form
 
         _btnSend.Enabled = false;
         _btnSend.Text = "Enviando...";
+        _btnSend.BackColor = Theme.TextTertiary;
 
         try
         {
@@ -516,8 +626,9 @@ public partial class MainForm : Form
         }
         finally
         {
-            _btnSend.Enabled = true;
+            _btnSend.Enabled = !string.IsNullOrWhiteSpace(_selectedPhone);
             _btnSend.Text = "Enviar";
+            _btnSend.BackColor = _btnSend.Enabled ? Theme.AccentBlue : Theme.TextTertiary;
         }
     }
 
@@ -730,7 +841,7 @@ public partial class MainForm : Form
         }
 
         _lblApiStatus.Text = connected ? "API: Conectado" : "API: Desconectado";
-        _lblApiStatus.ForeColor = connected ? Color.Green : Color.Red;
+        _lblApiStatus.ForeColor = connected ? Theme.Success : Theme.Danger;
     }
 
     private void UpdateSignalRStatus(bool connected)
@@ -742,7 +853,7 @@ public partial class MainForm : Form
         }
 
         _lblSignalRStatus.Text = connected ? "SignalR: Conectado" : "SignalR: Desconectado";
-        _lblSignalRStatus.ForeColor = connected ? Color.Green : Color.Red;
+        _lblSignalRStatus.ForeColor = connected ? Theme.Success : Theme.Danger;
     }
 
     private void ShowError(string error)
