@@ -90,28 +90,38 @@ public class ApiClient
             }
             
             var url = $"/api/v1/db/conversations/{Uri.EscapeDataString(phoneNormalized)}/messages?take={take}";
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[ApiClient] GetConversationMessagesAsync - Input phone: '{phone}', Normalized: '{phoneNormalized}', URL: '{url}'");
+#endif
             
             var response = await _httpClient.GetAsync(url, ct);
             
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[ApiClient] Response status: {response.StatusCode}");
+#endif
             
             if (response.IsSuccessStatusCode)
             {
                 var messages = await response.Content.ReadFromJsonAsync<List<MessageDto>>(ct);
+#if DEBUG
                 System.Diagnostics.Debug.WriteLine($"[ApiClient] Successfully deserialized {messages?.Count ?? 0} messages");
+#endif
                 return messages;
             }
             else
             {
                 var errorContent = await response.Content.ReadAsStringAsync(ct);
+#if DEBUG
                 System.Diagnostics.Debug.WriteLine($"[ApiClient] Error response ({response.StatusCode}): {errorContent}");
+#endif
             }
         }
         catch (Exception ex)
         {
+#if DEBUG
             System.Diagnostics.Debug.WriteLine($"[ApiClient] Exception in GetConversationMessagesAsync: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"[ApiClient] Stack trace: {ex.StackTrace}");
+#endif
         }
         return null;
     }

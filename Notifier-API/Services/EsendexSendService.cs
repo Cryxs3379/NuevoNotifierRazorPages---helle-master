@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NotifierAPI.Configuration;
 
@@ -11,12 +12,14 @@ public class EsendexSendService : ISendService
 {
     private readonly HttpClient _http;
     private readonly EsendexSettings _settings;
+    private readonly ILogger<EsendexSendService> _logger;
     private static readonly Regex E164 = new(@"^\+\d{6,15}$", RegexOptions.Compiled);
 
-    public EsendexSendService(HttpClient http, IOptions<EsendexSettings> settings)
+    public EsendexSendService(HttpClient http, IOptions<EsendexSettings> settings, ILogger<EsendexSendService> logger)
     {
         _http = http;
         _settings = settings.Value;
+        _logger = logger;
     }
 
     public async Task<SendResult> SendAsync(string to, string message, string? accountRef, CancellationToken ct = default)
@@ -41,7 +44,7 @@ public class EsendexSendService : ISendService
         }
 
         // Log mínimo para depurar (sin exponer secreto)
-        Console.WriteLine($"[EsendexSendService] Using accountreference={acc}");
+        _logger.LogDebug("Using account reference: {AccountRef}", acc);
 
         var payload = new
         {

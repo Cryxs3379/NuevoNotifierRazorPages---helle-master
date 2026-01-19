@@ -4,6 +4,7 @@ using NotifierAPI.Configuration;
 using NotifierAPI.Hubs;
 using NotifierAPI.Models;
 using NotifierAPI.Helpers;
+using static NotifierAPI.Helpers.LoggingHelpers;
 
 namespace NotifierAPI.Services;
 
@@ -228,7 +229,7 @@ public class EsendexMessageWatcher : BackgroundService
                     newMessages.Add(message);
                     _logger.LogInformation("New message detected: ID={Id}, From={From}, MessageLength={Length}", 
                         message.Id.Substring(0, Math.Min(8, message.Id.Length)) + "...", 
-                        message.From, 
+                        MaskPhone(message.From), 
                         message.Message?.Length ?? 0);
                     
                     // Intentar guardar en BD (si el repositorio está disponible)

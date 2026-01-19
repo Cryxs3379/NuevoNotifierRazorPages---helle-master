@@ -235,9 +235,9 @@ public static class WebApplicationExtensions
                     : phoneNormalized;
                 var phonePlus = "+" + phoneNoPlus;
 
-                // LOGS DE DIAGNÓSTICO
+                // LOGS DE DIAGNÓSTICO (PII enmascarado para Information/Warning)
                 app.Logger.LogInformation("[GetConversationMessages] Input phone: '{Phone}', Normalized: '{Normalized}', NoPlus: '{NoPlus}', Plus: '{Plus}'", 
-                    phone, phoneNormalized, phoneNoPlus, phonePlus);
+                    LoggingHelpers.MaskPhone(phone), LoggingHelpers.MaskPhone(phoneNormalized), LoggingHelpers.MaskPhone(phoneNoPlus), LoggingHelpers.MaskPhone(phonePlus));
 
                 // Verificar qué formatos hay realmente en la BD para este número (muestra de diagnóstico)
                 var sampleInbound = await dbContext.SmsMessages.AsNoTracking()
@@ -251,7 +251,7 @@ public static class WebApplicationExtensions
                     .FirstOrDefaultAsync(ct);
 
                 app.Logger.LogInformation("[GetConversationMessages] Sample Inbound Originator in DB: '{Originator}', Sample Outbound Recipient in DB: '{Recipient}'", 
-                    sampleInbound ?? "NOT FOUND", sampleOutbound ?? "NOT FOUND");
+                    LoggingHelpers.MaskPhone(sampleInbound ?? "NOT FOUND"), LoggingHelpers.MaskPhone(sampleOutbound ?? "NOT FOUND"));
 
                 // Mensajes entre empresa y ese phone (tolerante a formato):
                 // - Inbound: Direction=0 AND (Originator==phoneNoPlus OR Originator==phonePlus)
@@ -275,21 +275,21 @@ public static class WebApplicationExtensions
                     .ToListAsync(ct);
 
                 app.Logger.LogInformation("[GetConversationMessages] Found {Count} messages for phone '{Phone}' (searched as '{NoPlus}' and '{Plus}')", 
-                    items.Count, phone, phoneNoPlus, phonePlus);
+                    items.Count, LoggingHelpers.MaskPhone(phone), LoggingHelpers.MaskPhone(phoneNoPlus), LoggingHelpers.MaskPhone(phonePlus));
 
                 if (items.Count == 0)
                 {
                     app.Logger.LogWarning("[GetConversationMessages] No messages found. This could indicate a format mismatch. " +
                         "Check if Originator/Recipient in DB match the search patterns. " +
                         "Sample Inbound Originator: '{Originator}', Sample Outbound Recipient: '{Recipient}'", 
-                        sampleInbound ?? "NOT FOUND", sampleOutbound ?? "NOT FOUND");
+                        LoggingHelpers.MaskPhone(sampleInbound ?? "NOT FOUND"), LoggingHelpers.MaskPhone(sampleOutbound ?? "NOT FOUND"));
                 }
 
                 return Results.Ok(items);
             }
             catch (Exception ex)
             {
-                app.Logger.LogError(ex, "Error obteniendo conversación para {Phone}", phone);
+                app.Logger.LogError(ex, "Error obteniendo conversación para {Phone}", LoggingHelpers.MaskPhone(phone));
                 return Results.Problem(statusCode: 500, title: "Error al obtener la conversación");
             }
         })
@@ -369,7 +369,7 @@ public static class WebApplicationExtensions
                         }
                         catch (Exception normEx)
                         {
-                            app.Logger.LogWarning(normEx, "Failed to normalize customerPhone for SignalR: To={To}", toNormalized);
+                            app.Logger.LogWarning(normEx, "Failed to normalize customerPhone for SignalR: To={To}", LoggingHelpers.MaskPhone(toNormalized));
                             // Usar el original si falla la normalización
                             customerPhoneForSignalR = toNormalized;
                         }
@@ -576,7 +576,7 @@ public static class WebApplicationExtensions
             }
             catch (Exception ex)
             {
-                app.Logger.LogError(ex, "Error marcando conversación como leída: {Phone}", customerPhone);
+                app.Logger.LogError(ex, "Error marcando conversación como leída: {Phone}", LoggingHelpers.MaskPhone(customerPhone));
                 return Results.Problem(statusCode: 500, title: "Error al marcar la conversación como leída");
             }
         })
@@ -623,7 +623,7 @@ public static class WebApplicationExtensions
             }
             catch (Exception ex)
             {
-                app.Logger.LogError(ex, "Error asignando conversación: {Phone}", customerPhone);
+                app.Logger.LogError(ex, "Error asignando conversación: {Phone}", LoggingHelpers.MaskPhone(customerPhone));
                 return Results.Problem(statusCode: 500, title: "Error al asignar la conversación");
             }
         })

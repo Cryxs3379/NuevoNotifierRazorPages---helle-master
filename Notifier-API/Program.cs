@@ -38,6 +38,7 @@ if (hasCredentials)
     builder.Services.AddHttpClient<EsendexInboxService>(client =>
     {
         client.BaseAddress = new Uri(esendexSettings.BaseUrl ?? "https://api.esendex.com/v1.0/");
+        client.Timeout = TimeSpan.FromSeconds(30);
         client.DefaultRequestHeaders.Accept.Clear();
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{esendexSettings.Username}:{esendexSettings.ApiPassword}"));
@@ -62,6 +63,7 @@ if (hasCredentials)
     builder.Services.AddHttpClient<EsendexSendService>(client =>
     {
         client.BaseAddress = new Uri(esendexSettings.BaseUrl ?? "https://api.esendex.com/v1.0/");
+        client.Timeout = TimeSpan.FromSeconds(30);
         var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{esendexSettings.Username}:{esendexSettings.ApiPassword}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
         client.DefaultRequestHeaders.Accept.Clear();
