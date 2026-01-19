@@ -2,7 +2,6 @@ namespace NotifierDesktop;
 
 public partial class SettingsForm : Form
 {
-    private readonly TextBox _txtApiBaseUrl;
     private readonly TextBox _txtOperatorName;
     private readonly Button _btnSave;
     private readonly Button _btnCancel;
@@ -15,36 +14,20 @@ public partial class SettingsForm : Form
         _settings = currentSettings;
         Settings = new AppSettings
         {
-            ApiBaseUrl = currentSettings.ApiBaseUrl,
             OperatorName = currentSettings.OperatorName
         };
 
         Text = "Configuración";
-        Size = new Size(500, 200);
+        Size = new Size(400, 150);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
 
-        var lblApiUrl = new Label
-        {
-            Text = "URL de la API:",
-            Location = new Point(12, 15),
-            Size = new Size(120, 23),
-            TextAlign = ContentAlignment.MiddleLeft
-        };
-
-        _txtApiBaseUrl = new TextBox
-        {
-            Text = Settings.ApiBaseUrl,
-            Location = new Point(140, 12),
-            Size = new Size(330, 23)
-        };
-
         var lblOperator = new Label
         {
             Text = "Nombre del operador:",
-            Location = new Point(12, 50),
+            Location = new Point(12, 20),
             Size = new Size(120, 23),
             TextAlign = ContentAlignment.MiddleLeft
         };
@@ -52,15 +35,15 @@ public partial class SettingsForm : Form
         _txtOperatorName = new TextBox
         {
             Text = Settings.OperatorName,
-            Location = new Point(140, 47),
-            Size = new Size(330, 23)
+            Location = new Point(140, 17),
+            Size = new Size(230, 23)
         };
 
         _btnSave = new Button
         {
             Text = "Guardar",
             DialogResult = DialogResult.OK,
-            Location = new Point(296, 90),
+            Location = new Point(196, 60),
             Size = new Size(85, 30)
         };
         _btnSave.Click += BtnSave_Click;
@@ -69,12 +52,11 @@ public partial class SettingsForm : Form
         {
             Text = "Cancelar",
             DialogResult = DialogResult.Cancel,
-            Location = new Point(385, 90),
+            Location = new Point(285, 60),
             Size = new Size(85, 30)
         };
 
         Controls.AddRange(new Control[] {
-            lblApiUrl, _txtApiBaseUrl,
             lblOperator, _txtOperatorName,
             _btnSave, _btnCancel
         });
@@ -85,25 +67,14 @@ public partial class SettingsForm : Form
 
     private void BtnSave_Click(object? sender, EventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_txtApiBaseUrl.Text))
+        var operatorName = _txtOperatorName.Text.Trim();
+        if (string.IsNullOrWhiteSpace(operatorName))
         {
-            MessageBox.Show("La URL de la API es requerida.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show("El nombre del operador es requerido.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             DialogResult = DialogResult.None;
             return;
         }
 
-        if (!Uri.TryCreate(_txtApiBaseUrl.Text, UriKind.Absolute, out _))
-        {
-            MessageBox.Show("La URL de la API no es válida.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            DialogResult = DialogResult.None;
-            return;
-        }
-
-        Settings.ApiBaseUrl = _txtApiBaseUrl.Text.Trim();
-        Settings.OperatorName = _txtOperatorName.Text.Trim();
-        if (string.IsNullOrWhiteSpace(Settings.OperatorName))
-        {
-            Settings.OperatorName = Environment.UserName;
-        }
+        Settings.OperatorName = operatorName;
     }
 }

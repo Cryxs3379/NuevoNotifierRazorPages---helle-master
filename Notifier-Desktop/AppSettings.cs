@@ -4,7 +4,9 @@ namespace NotifierDesktop;
 
 public class AppSettings
 {
-    public string ApiBaseUrl { get; set; } = "http://localhost:5080";
+    // URL fija de la API - no configurable
+    public const string ApiBaseUrl = "http://localhost:5080";
+    
     public string OperatorName { get; set; } = Environment.UserName;
 
     private static readonly string SettingsPath = Path.Combine(

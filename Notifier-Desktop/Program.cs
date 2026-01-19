@@ -13,21 +13,17 @@ static class Program
         // Cargar configuración
         var settings = AppSettings.Load();
         
-        // Mostrar formulario de configuración si la URL no está configurada
-        if (string.IsNullOrWhiteSpace(settings.ApiBaseUrl) || 
-            !Uri.TryCreate(settings.ApiBaseUrl, UriKind.Absolute, out _))
+        // SIEMPRE pedir el nombre del operador al iniciar (obligatorio)
+        using var operatorDialog = new OperatorNameDialog(settings.OperatorName);
+        if (operatorDialog.ShowDialog() != DialogResult.OK)
         {
-            using var settingsForm = new SettingsForm(settings);
-            if (settingsForm.ShowDialog() == DialogResult.OK)
-            {
-                settingsForm.Settings.Save();
-                settings = settingsForm.Settings;
-            }
-            else
-            {
-                return; // Salir si canceló
-            }
+            // Si cancela, salir de la aplicación
+            return;
         }
+        
+        // Actualizar el nombre del operador y guardarlo
+        settings.OperatorName = operatorDialog.OperatorName;
+        settings.Save();
 
         // Crear y mostrar formulario principal
         var mainForm = new MainForm(settings);
@@ -41,9 +37,9 @@ static class Program
             if (settingsForm.ShowDialog() == DialogResult.OK)
             {
                 settingsForm.Settings.Save();
-                settings.ApiBaseUrl = settingsForm.Settings.ApiBaseUrl;
                 settings.OperatorName = settingsForm.Settings.OperatorName;
-                MessageBox.Show("La configuración se aplicará al reiniciar la aplicación.", 
+                // El MainForm usa _settings directamente, así que se actualiza automáticamente
+                MessageBox.Show($"El nombre del operador se ha actualizado a: {settings.OperatorName}\nSe aplicará al enviar nuevos mensajes.", 
                     "Configuración", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         };

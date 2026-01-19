@@ -264,8 +264,9 @@ public partial class MainForm : Form
 
     private void LoadSettings()
     {
-        _apiClient = new ApiClient(_settings.ApiBaseUrl);
-        _signalRService = new SignalRService(_settings.ApiBaseUrl);
+        // Usar URL fija de la API
+        _apiClient = new ApiClient(AppSettings.ApiBaseUrl);
+        _signalRService = new SignalRService(AppSettings.ApiBaseUrl);
         _conversationsController = new ConversationsController(_apiClient, _signalRService);
         _chatController = new ChatController(_apiClient);
 
