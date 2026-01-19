@@ -68,11 +68,11 @@ body {
 
 /* Truncate text */
 .text-truncate-custom {
-    max-width: 200px;
+    max-width: 100%;  /* Usar todo el ancho disponible de la celda */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    display: inline-block;
+    display: block;  /* Cambiar de inline-block a block */
 }
 
 /* Phone number formatting */
