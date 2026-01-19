@@ -53,6 +53,7 @@ public class ConversationDto
     public DateTime? AssignedUntil { get; set; }
     public DateTime? LastMessageAt { get; set; }
     public string Preview { get; set; } = string.Empty;
+    public string? LastRespondedBy { get; set; } // Quién respondió por última vez (SentBy del último OUTBOUND)
 }
 
 public class ConversationsResponse

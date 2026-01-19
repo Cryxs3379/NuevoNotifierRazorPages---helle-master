@@ -495,12 +495,15 @@ public static class WebApplicationExtensions
                 var phoneList = conversations.Select(c => c.CustomerPhone).ToList();
                 // Obtener preview para cada conversación (tolerante a formato con/sin '+')
                 var previews = new Dictionary<string, string>();
+                var lastRespondedBy = new Dictionary<string, string?>();
+                
                 foreach (var phone in phoneList)
                 {
                     // Normalizar phone para buscar en ambos formatos
                     var phoneNoPlus = phone.StartsWith("+") ? phone.Substring(1) : phone;
                     var phonePlus = "+" + phoneNoPlus;
                     
+                    // Obtener preview (último mensaje de cualquier dirección)
                     var previewMessage = await dbContext.SmsMessages.AsNoTracking()
                         .Where(m => 
                             (m.Direction == 0 && (m.Originator == phoneNoPlus || m.Originator == phonePlus)) ||
@@ -511,6 +514,17 @@ public static class WebApplicationExtensions
                         .FirstOrDefaultAsync(ct);
                     
                     previews[phone] = previewMessage ?? string.Empty;
+                    
+                    // Obtener último SentBy (quién respondió por última vez) del último mensaje OUTBOUND
+                    var lastOutboundSentBy = await dbContext.SmsMessages.AsNoTracking()
+                        .Where(m => m.Direction == 1 && // Solo OUTBOUND
+                            (m.Recipient == phoneNoPlus || m.Recipient == phonePlus))
+                        .OrderByDescending(m => m.MessageAt)
+                        .ThenByDescending(m => m.Id)
+                        .Select(m => m.SentBy)
+                        .FirstOrDefaultAsync(ct);
+                    
+                    lastRespondedBy[phone] = string.IsNullOrWhiteSpace(lastOutboundSentBy) ? null : lastOutboundSentBy;
                 }
 
                 // Construir respuesta
@@ -525,7 +539,8 @@ public static class WebApplicationExtensions
                     assignedTo = c.AssignedTo,
                     assignedUntil = c.AssignedUntil,
                     lastMessageAt = c.LastMessageAt,
-                    preview = previews.GetValueOrDefault(c.CustomerPhone, string.Empty)
+                    preview = previews.GetValueOrDefault(c.CustomerPhone, string.Empty),
+                    lastRespondedBy = lastRespondedBy.GetValueOrDefault(c.CustomerPhone, null)
                 }).ToList();
 
                 return Results.Ok(new

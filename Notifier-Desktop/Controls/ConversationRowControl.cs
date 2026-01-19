@@ -231,13 +231,13 @@ public partial class ConversationRowControl : UserControl
             _lblBadgePending.Visible = false;
         }
         
-        _lblAssigned.Visible = _conversation.AssignedTo != null && 
-            _conversation.AssignedUntil.HasValue && 
-            _conversation.AssignedUntil > DateTime.UtcNow;
+        // Mostrar "Respondió: {LastRespondedBy}" basado en quién respondió por última vez
+        // (no quién está asignado, ya que pueden ser diferentes)
+        _lblAssigned.Visible = !string.IsNullOrWhiteSpace(_conversation.LastRespondedBy);
         
         if (_lblAssigned.Visible)
         {
-            _lblAssigned.Text = $"Atendiendo: {_conversation.AssignedTo}";
+            _lblAssigned.Text = $"Respondió: {_conversation.LastRespondedBy}";
         }
     }
 

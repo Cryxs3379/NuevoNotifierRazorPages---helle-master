@@ -57,7 +57,8 @@ public class ConversationsController
                     PendingReply = dto.PendingReply,
                     Unread = dto.Unread,
                     AssignedTo = dto.AssignedTo,
-                    AssignedUntil = dto.AssignedUntil
+                    AssignedUntil = dto.AssignedUntil,
+                    LastRespondedBy = dto.LastRespondedBy // Mapear quién respondió por última vez
                 };
             })
             .Where(c => !string.IsNullOrEmpty(c.Phone)) // Filtrar conversaciones sin teléfono válido
@@ -199,7 +200,8 @@ public class ConversationsController
                 Unread = isInbound,
                 PendingReply = isInbound,
                 AssignedTo = null,
-                AssignedUntil = null
+                AssignedUntil = null,
+                LastRespondedBy = !isInbound && !string.IsNullOrWhiteSpace(message.SentBy) ? message.SentBy : null
             };
             Conversations.Add(conv);
 #if DEBUG
@@ -232,6 +234,11 @@ public class ConversationsController
             else
             {
                 conv.LastOutboundAt = message.MessageAt;
+                // Actualizar LastRespondedBy si el mensaje es OUTBOUND y tiene SentBy
+                if (!string.IsNullOrWhiteSpace(message.SentBy))
+                {
+                    conv.LastRespondedBy = message.SentBy;
+                }
                 // Si hay un outbound más reciente que el último inbound, puede que ya no esté pendiente
                 // Pero no podemos saberlo sin consultar el backend, así que solo actualizamos LastOutboundAt
                 // El backend actualizará PendingReply cuando se consulte

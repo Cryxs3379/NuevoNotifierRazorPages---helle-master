@@ -11,4 +11,5 @@ public class ConversationVm
     public int? UnreadCount { get; set; } // Opcional
     public string? AssignedTo { get; set; }
     public DateTime? AssignedUntil { get; set; }
+    public string? LastRespondedBy { get; set; } // Quién respondió por última vez (SentBy del último OUTBOUND)
 }
