@@ -39,7 +39,9 @@ public partial class ConversationRowControl : UserControl
             Text = "",
             Font = new Font(Font.FontFamily, 10, FontStyle.Bold),
             Location = new Point(10, 8),
-            AutoSize = true
+            AutoSize = false,
+            AutoEllipsis = true,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
 
         _lblPreview = new Label
@@ -167,9 +169,16 @@ public partial class ConversationRowControl : UserControl
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_lblPreview != null)
+        if (Width > 0)
         {
-            _lblPreview.Width = Width - 120;
+            if (_lblPhone != null)
+            {
+                _lblPhone.Width = Math.Max(100, Width - 100); // Reserva 100px para hora + padding
+            }
+            if (_lblPreview != null)
+            {
+                _lblPreview.Width = Width - 120;
+            }
         }
     }
 }

@@ -325,7 +325,7 @@ public partial class MainForm : Form
             var rowControl = new ConversationRowControl
             {
                 Conversation = conv,
-                Width = _flowReceived.Width - 25,
+                Width = Math.Max(200, _flowReceived.Width - 25),
                 Margin = new Padding(0, 0, 0, 2)
             };
             rowControl.ConversationSelected += async (s, e) => await ConversationRowControl_ConversationSelected(conv.Phone);
@@ -339,7 +339,7 @@ public partial class MainForm : Form
                 var rowControlSent = new ConversationRowControl
                 {
                     Conversation = conv,
-                    Width = _flowSent.Width - 25,
+                    Width = Math.Max(200, _flowSent.Width - 25),
                     Margin = new Padding(0, 0, 0, 2)
                 };
                 rowControlSent.ConversationSelected += async (s, e) => await ConversationRowControl_ConversationSelected(conv.Phone);
