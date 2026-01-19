@@ -140,21 +140,22 @@
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover table-striped mb-0">
+                        <table class="table table-hover table-striped mb-0 table-sm">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width: 12%;">De</th>
-                                    <th style="width: 12%;">Para</th>
-                                    <th>Mensaje</th>
-                                    <th style="width: 12%;">Fecha/Hora</th>
-                                    <th style="width: 15%;">ID</th>
-                                    <th class="text-center" style="width: 18%;">Acciones</th>
+                                    <th style="min-width: 100px; width: 10%;">De</th>
+                                    <th style="min-width: 100px; width: 10%;">Para</th>
+                                    <th style="min-width: 150px;">Mensaje</th>
+                                    <th style="min-width: 80px; width: 10%;">Fecha/Hora</th>
+                                    <th style="min-width: 80px; width: 10%;">Enviado por</th>
+                                    <th style="min-width: 100px; width: 12%;">ID</th>
+                                    <th class="text-center" style="min-width: 140px; width: 15%;">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="messagesTableBody">
                                 <!-- Spinner de carga (oculto inicialmente) -->
                                 <tr id="loadingRow" style="display: none;">
-                                    <td colspan="6" class="text-center py-4">
+                                    <td colspan="7" class="text-center py-4">
                                         <div class="spinner-border text-primary" role="status">
                                             <span class="visually-hidden">Cargando...</span>
                                         </div>
@@ -163,7 +164,7 @@
                                 </tr>
                                 <!-- Fila de error (oculta inicialmente) -->
                                 <tr id="errorRow" style="display: none;">
-                                    <td colspan="6" class="text-center py-4">
+                                    <td colspan="7" class="text-center py-4">
                                         <div class="alert alert-danger mb-0">
                                             <i class="bi bi-exclamation-triangle-fill"></i>
                                             <span id="errorMessageText">Error al cargar mensajes</span>
@@ -175,20 +176,33 @@
                                 </tr>
                                 @foreach (var message in Model.Messages.Items)
                                 {
+                                    var messagePreview = message.Message?.Length > 80 ? message.Message.Substring(0, 80) + "..." : message.Message;
+                                    var isTruncated = message.Message?.Length > 80;
                                     <tr data-message-id="@message.Id">
                                         <td>
-                                            <span class="phone-number" title="@message.From">
+                                            <span class="phone-number small" title="@message.From">
                                                 @message.From
                                             </span>
                                         </td>
                                         <td>
-                                            <span class="phone-number" title="@message.To">
+                                            <span class="phone-number small" title="@message.To">
                                                 @message.To
                                             </span>
                                         </td>
                                         <td>
-                                            <div class="text-truncate-custom" title="@message.Message">
-                                                @message.Message
+                                            <div class="message-preview-container">
+                                                <span class="message-preview-text" data-full-text="@message.Message" data-id="@message.Id">
+                                                    @messagePreview
+                                                </span>
+                                                @if (isTruncated)
+                                                {
+                                                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-primary message-toggle-btn" 
+                                                            data-id="@message.Id" 
+                                                            onclick="toggleMessage(this)"
+                                                            title="Ver mensaje completo">
+                                                        <small>ver más</small>
+                                                    </button>
+                                                }
                                             </div>
                                         </td>
                                         <td>
@@ -197,8 +211,13 @@
                                             </small>
                                         </td>
                                         <td>
-                                            <code class="text-muted small" style="font-size: 0.8rem; white-space: nowrap;" title="@message.Id">
-                                                @message.Id
+                                            <small class="text-muted">
+                                                @(string.IsNullOrWhiteSpace(message.SentBy) ? "-" : message.SentBy)
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <code class="text-muted small" style="font-size: 0.75rem; white-space: nowrap; word-break: break-all;" title="@message.Id">
+                                                @message.Id.ToString().Substring(Math.Max(0, message.Id.Length - 8))
                                             </code>
                                         </td>
                                         <td class="text-center">
@@ -206,7 +225,7 @@
                                                     data-id="@message.Id" 
                                                     onclick="viewFullMessage(this)"
                                                     title="Ver mensaje completo">
-                                                <i class="bi bi-eye-fill"></i> Ver
+                                                <i class="bi bi-eye-fill"></i>
                                             </button>
                                             @{
                                                 var replyTo = Model.Direction == "inbound" ? message.From : message.To;
@@ -219,7 +238,7 @@
                                                asp-route-to="@replyTo" 
                                                class="btn btn-sm btn-outline-primary ms-1"
                                                title="Responder">
-                                                <i class="bi bi-reply-fill"></i> Responder
+                                                <i class="bi bi-reply-fill"></i>
                                             </a>
                                         </td>
                                     </tr>
@@ -348,6 +367,9 @@ else if (Model.Messages != null)
                     <div class="mb-3">
                         <strong>Fecha/Hora:</strong> <span id="messageDate"></span>
                     </div>
+                    <div class="mb-3" id="messageSentByContainer" style="display: none;">
+                        <strong>Enviado por:</strong> <span id="messageSentBy"></span>
+                    </div>
                     <div class="mb-3">
                         <strong>ID:</strong> <code id="messageId" style="font-size: 0.85rem;"></code>
                     </div>
@@ -387,6 +409,42 @@ else if (Model.Messages != null)
         return localTime.ToString("dd/MM/yyyy HH:mm");
     }
 }
+
+<style>
+    .message-preview-container {
+        word-break: break-word;
+        max-width: 300px;
+    }
+    .message-preview-text {
+        display: inline;
+    }
+    .message-toggle-btn {
+        text-decoration: none;
+        font-size: 0.85rem;
+    }
+    .message-toggle-btn:hover {
+        text-decoration: underline;
+    }
+    .table-sm td {
+        padding: 0.5rem;
+        font-size: 0.875rem;
+    }
+    .table-sm th {
+        padding: 0.75rem 0.5rem;
+        font-size: 0.875rem;
+    }
+    .phone-number {
+        word-break: break-all;
+    }
+    @@media (max-width: 768px) {
+        .table-responsive {
+            font-size: 0.8rem;
+        }
+        .table-sm td, .table-sm th {
+            padding: 0.4rem 0.3rem;
+        }
+    }
+</style>
 
 @section Scripts {
     <!-- SignalR Client Library -->
@@ -449,11 +507,27 @@ else if (Model.Messages != null)
             const messageText = message.message || '';
             const id = message.id || '';
             const receivedUtc = message.receivedUtc || new Date().toISOString();
+            const sentBy = message.sentBy || '';
+            
+            // Truncar mensaje si es muy largo
+            const maxLength = 80;
+            const isTruncated = messageText.length > maxLength;
+            const messagePreview = isTruncated ? messageText.substring(0, maxLength) + '...' : messageText;
+            const toggleButton = isTruncated ? 
+                `<button type="button" class="btn btn-link btn-sm p-0 ms-1 text-primary message-toggle-btn" 
+                         data-id="${id}" 
+                         onclick="toggleMessage(this)"
+                         title="Ver mensaje completo">
+                    <small>ver más</small>
+                 </button>` : '';
             
             // Construir URL de responder (inbound: responder a From, outbound: responder a To)
             const replyTo = (isInbound ? from : to);
             const replyToNormalized = replyTo.startsWith('+') ? replyTo : '+' + replyTo;
             const replyUrl = `/Messages/Reply?to=${encodeURIComponent(replyToNormalized)}`;
+            
+            // Formatear ID para mostrar solo últimos caracteres
+            const shortId = id.length > 8 ? id.substring(id.length - 8) : id;
             
             // Botones
             let actionButtons = `
@@ -461,35 +535,64 @@ else if (Model.Messages != null)
                         data-id="${id}" 
                         onclick="viewFullMessage(this)"
                         title="Ver mensaje completo">
-                    <i class="bi bi-eye-fill"></i> Ver
+                    <i class="bi bi-eye-fill"></i>
                 </button>
                 <a href="${replyUrl}" 
                    class="btn btn-sm btn-outline-primary ms-1"
                    title="Responder">
-                    <i class="bi bi-reply-fill"></i> Responder
+                    <i class="bi bi-reply-fill"></i>
                 </a>`;
             
             return `
                 <tr data-message-id="${id}" class="table-warning">
                     <td>
-                        <span class="phone-number" title="${from}">${from}</span>
+                        <span class="phone-number small" title="${from}">${from}</span>
                     </td>
                     <td>
-                        <span class="phone-number" title="${to}">${to}</span>
+                        <span class="phone-number small" title="${to}">${to}</span>
                     </td>
                     <td>
-                        <div class="text-truncate-custom" title="${messageText}">${messageText}</div>
+                        <div class="message-preview-container">
+                            <span class="message-preview-text" data-full-text="${messageText.replace(/"/g, '&quot;')}" data-id="${id}">${messagePreview}</span>
+                            ${toggleButton}
+                        </div>
                     </td>
                     <td>
                         <small class="text-muted" title="${receivedUtc}">${formatDate(receivedUtc)}</small>
                     </td>
                     <td>
-                        <code class="text-muted small" style="font-size: 0.8rem; white-space: nowrap;" title="${id}">${id}</code>
+                        <small class="text-muted">${sentBy || '-'}</small>
+                    </td>
+                    <td>
+                        <code class="text-muted small" style="font-size: 0.75rem; white-space: nowrap; word-break: break-all;" title="${id}">${shortId}</code>
                     </td>
                     <td class="text-center">
                         ${actionButtons}
                     </td>
                 </tr>`;
+        }
+
+        // Función para alternar entre mensaje completo y truncado
+        function toggleMessage(btn) {
+            const id = btn.getAttribute('data-id');
+            const messageContainer = btn.closest('.message-preview-container');
+            const messageText = messageContainer.querySelector('.message-preview-text');
+            const fullText = messageText.getAttribute('data-full-text');
+            const currentText = messageText.textContent;
+            
+            if (currentText.length < fullText.length) {
+                // Mostrar completo
+                messageText.textContent = fullText;
+                btn.innerHTML = '<small>ver menos</small>';
+                btn.setAttribute('title', 'Ocultar mensaje');
+            } else {
+                // Mostrar truncado
+                const maxLength = 80;
+                const truncated = fullText.length > maxLength ? fullText.substring(0, maxLength) + '...' : fullText;
+                messageText.textContent = truncated;
+                btn.innerHTML = '<small>ver más</small>';
+                btn.setAttribute('title', 'Ver mensaje completo');
+            }
         }
 
         // Función para insertar un mensaje nuevo en la tabla
@@ -625,10 +728,12 @@ else if (Model.Messages != null)
                 const direction = urlParams.get('direction') || 'inbound';
                 const page = urlParams.get('currentPage') || '1';
                 const pageSize = urlParams.get('pageSize') || '25';
-                const accountRef = urlParams.get('accountRef') || '';
 
-                // Construir URL del endpoint
-                const apiUrl = `/api/v1/messages?direction=${encodeURIComponent(direction)}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}${accountRef ? '&accountRef=' + encodeURIComponent(accountRef) : ''}`;
+                // Convertir direction a número (0 = inbound, 1 = outbound)
+                const directionNum = direction === 'inbound' ? 0 : 1;
+
+                // Usar endpoint de BD que incluye SentBy
+                const apiUrl = `/api/v1/db/messages?direction=${directionNum}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`;
 
                 const response = await fetch(apiUrl);
                 
@@ -641,19 +746,27 @@ else if (Model.Messages != null)
                 // Limpiar tbody (excepto loading/error rows)
                 dataRows.forEach(row => row.remove());
                 
-                // Renderizar nuevas filas
+                // Renderizar nuevas filas - mapear formato de BD a formato esperado
                 if (data.items && data.items.length > 0) {
-                    data.items.forEach(message => {
+                    data.items.forEach(item => {
+                        const message = {
+                            id: item.id.toString(),
+                            from: item.originator,
+                            to: item.recipient,
+                            message: item.body,
+                            receivedUtc: item.messageAt,
+                            sentBy: item.sentBy || null
+                        };
                         const row = renderMessageRow(message);
                         tbody.insertAdjacentHTML('beforeend', row);
                         // Añadir al set de IDs vistos
                         if (message.id) {
-                            seenMessageIds.add(message.id);
+                            seenMessageIds.add(message.id.toString());
                         }
                     });
                 } else {
                     // Si no hay mensajes, mostrar mensaje
-                    tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="6" class="text-center py-4 text-muted">No hay mensajes para mostrar</td></tr>');
+                    tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="7" class="text-center py-4 text-muted">No hay mensajes para mostrar</td></tr>');
                 }
 
                 // Actualizar contador
@@ -806,13 +919,23 @@ else if (Model.Messages != null)
                     const message = await res.json();
                     
                     // Populate modal with message data
-                    document.getElementById('messageFrom').textContent = message.from || 'N/A';
-                    document.getElementById('messageTo').textContent = message.to || 'N/A';
+                    document.getElementById('messageFrom').textContent = message.from || message.originator || 'N/A';
+                    document.getElementById('messageTo').textContent = message.to || message.recipient || 'N/A';
                     // Usar el ID del botón para mantener consistencia con el listado
                     document.getElementById('messageId').textContent = id;
                     
+                    // Mostrar SentBy si existe
+                    const sentByContainer = document.getElementById('messageSentByContainer');
+                    const sentBySpan = document.getElementById('messageSentBy');
+                    if (message.sentBy) {
+                        sentBySpan.textContent = message.sentBy;
+                        sentByContainer.style.display = 'block';
+                    } else {
+                        sentByContainer.style.display = 'none';
+                    }
+                    
                     // Format date
-                    const date = new Date(message.receivedUtc);
+                    const date = new Date(message.receivedUtc || message.messageAt);
                     document.getElementById('messageDate').textContent = date.toLocaleString('es-ES', {
                         year: 'numeric',
                         month: '2-digit',
@@ -824,7 +947,7 @@ else if (Model.Messages != null)
 
                     // Show message body (preserve line breaks)
                     const messageBody = document.getElementById('messageBody');
-                    messageBody.textContent = message.message || 'Sin contenido';
+                    messageBody.textContent = message.message || message.body || 'Sin contenido';
                     messageBody.style.whiteSpace = 'pre-wrap';
                     messageBody.style.wordBreak = 'break-word';
 

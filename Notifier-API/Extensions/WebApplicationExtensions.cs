@@ -122,7 +122,8 @@ public static class WebApplicationExtensions
                     from = message.Originator,
                     to = message.Recipient,
                     message = message.Body,
-                    receivedUtc = message.MessageAt.ToString("O") // ISO8601
+                    receivedUtc = message.MessageAt.ToString("O"), // ISO8601
+                    sentBy = message.SentBy // Incluir SentBy
                 });
             }
             catch (Exception ex)

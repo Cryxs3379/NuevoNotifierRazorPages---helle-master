@@ -85,7 +85,8 @@ public class MessagesIndexModel : PageModel
                 From = m.Originator,
                 To = m.Recipient,
                 Message = m.Body,
-                ReceivedUtc = m.MessageAt
+                ReceivedUtc = m.MessageAt,
+                SentBy = m.SentBy // Incluir SentBy (trabajador que responde)
             }).ToList();
 
             Messages = new MessagesResponse
