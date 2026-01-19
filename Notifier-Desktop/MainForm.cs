@@ -17,13 +17,8 @@ public partial class MainForm : Form
     private ChatController? _chatController;
 
     // UI Controls
-    private TabControl _tabControl;
-    private TabPage _tabReceived;
-    private TabPage _tabSent;
-    private TextBox _txtSearchReceived;
-    private TextBox _txtSearchSent;
+    private TextBox _txtSearch;
     private FlowLayoutPanel _flowReceived;
-    private FlowLayoutPanel _flowSent;
     private SplitContainer _splitContainer;
     private Panel _chatHeader;
     private Label _lblChatPhone;
@@ -95,22 +90,12 @@ public partial class MainForm : Form
 
         statusPanel.Controls.AddRange(new Control[] { _lblApiStatus, _lblSignalRStatus, _lblError });
 
-        // TabControl principal
-        _tabControl = new TabControl
-        {
-            Dock = DockStyle.Fill,
-            Appearance = TabAppearance.FlatButtons,
-            Font = Theme.Body
-        };
-        Theme.EnableDoubleBuffer(_tabControl);
-
-        // Tab "Recibidos"
-        _tabReceived = new TabPage("Recibidos");
-        var receivedPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Theme.Spacing8) };
-        receivedPanel.BackColor = Theme.Background;
-        Theme.EnableDoubleBuffer(receivedPanel);
+        // Panel izquierdo: Lista de conversaciones
+        var conversationsPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Theme.Spacing8) };
+        conversationsPanel.BackColor = Theme.Background;
+        Theme.EnableDoubleBuffer(conversationsPanel);
         
-        _txtSearchReceived = new TextBox
+        _txtSearch = new TextBox
         {
             Dock = DockStyle.Top,
             Height = 36,
@@ -119,10 +104,10 @@ public partial class MainForm : Form
             BorderStyle = BorderStyle.FixedSingle,
             BackColor = Theme.Surface
         };
-        _txtSearchReceived.GotFocus += (s, e) => { if (_txtSearchReceived.Text == "Buscar por teléfono...") { _txtSearchReceived.Clear(); _txtSearchReceived.ForeColor = Theme.TextPrimary; } };
-        _txtSearchReceived.LostFocus += (s, e) => { if (string.IsNullOrWhiteSpace(_txtSearchReceived.Text)) { _txtSearchReceived.Text = "Buscar por teléfono..."; _txtSearchReceived.ForeColor = Theme.TextSecondary; } };
-        _txtSearchReceived.ForeColor = Theme.TextSecondary;
-        _txtSearchReceived.TextChanged += async (s, e) => await SearchReceivedAsync();
+        _txtSearch.GotFocus += (s, e) => { if (_txtSearch.Text == "Buscar por teléfono...") { _txtSearch.Clear(); _txtSearch.ForeColor = Theme.TextPrimary; } };
+        _txtSearch.LostFocus += (s, e) => { if (string.IsNullOrWhiteSpace(_txtSearch.Text)) { _txtSearch.Text = "Buscar por teléfono..."; _txtSearch.ForeColor = Theme.TextSecondary; } };
+        _txtSearch.ForeColor = Theme.TextSecondary;
+        _txtSearch.TextChanged += async (s, e) => await SearchConversationsAsync();
         
         _flowReceived = new FlowLayoutPanel
         {
@@ -133,45 +118,8 @@ public partial class MainForm : Form
             BackColor = Theme.Background
         };
         Theme.EnableDoubleBuffer(_flowReceived);
-        receivedPanel.Controls.Add(_flowReceived);
-        receivedPanel.Controls.Add(_txtSearchReceived);
-        _tabReceived.Controls.Add(receivedPanel);
-
-        // Tab "Enviados"
-        _tabSent = new TabPage("Enviados");
-        var sentPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Theme.Spacing8) };
-        sentPanel.BackColor = Theme.Background;
-        Theme.EnableDoubleBuffer(sentPanel);
-        
-        _txtSearchSent = new TextBox
-        {
-            Dock = DockStyle.Top,
-            Height = 36,
-            Text = "Buscar por teléfono...",
-            Font = Theme.Body,
-            BorderStyle = BorderStyle.FixedSingle,
-            BackColor = Theme.Surface
-        };
-        _txtSearchSent.GotFocus += (s, e) => { if (_txtSearchSent.Text == "Buscar por teléfono...") { _txtSearchSent.Clear(); _txtSearchSent.ForeColor = Theme.TextPrimary; } };
-        _txtSearchSent.LostFocus += (s, e) => { if (string.IsNullOrWhiteSpace(_txtSearchSent.Text)) { _txtSearchSent.Text = "Buscar por teléfono..."; _txtSearchSent.ForeColor = Theme.TextSecondary; } };
-        _txtSearchSent.ForeColor = Theme.TextSecondary;
-        _txtSearchSent.TextChanged += async (s, e) => await SearchSentAsync();
-        
-        _flowSent = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            AutoScroll = true,
-            BackColor = Theme.Background
-        };
-        Theme.EnableDoubleBuffer(_flowSent);
-        sentPanel.Controls.Add(_flowSent);
-        sentPanel.Controls.Add(_txtSearchSent);
-        _tabSent.Controls.Add(sentPanel);
-
-        _tabControl.TabPages.Add(_tabReceived);
-        _tabControl.TabPages.Add(_tabSent);
+        conversationsPanel.Controls.Add(_flowReceived);
+        conversationsPanel.Controls.Add(_txtSearch);
 
         // SplitContainer principal (fixed width, no resizable)
         _splitContainer = new SplitContainer
@@ -199,8 +147,8 @@ public partial class MainForm : Form
             }
         };
 
-        // Panel izquierdo: TabControl con conversaciones
-        _splitContainer.Panel1.Controls.Add(_tabControl);
+        // Panel izquierdo: Lista de conversaciones
+        _splitContainer.Panel1.Controls.Add(conversationsPanel);
 
         // Panel derecho: Chat
         var chatPanel = new Panel { Dock = DockStyle.Fill };
@@ -385,11 +333,9 @@ public partial class MainForm : Form
 
         // Suspend layout for performance
         _flowReceived.SuspendLayout();
-        _flowSent.SuspendLayout();
 
-        // Limpiar listas
+        // Limpiar lista
         _flowReceived.Controls.Clear();
-        _flowSent.Controls.Clear();
 
         foreach (var conv in _conversationsController.Conversations)
         {
@@ -402,27 +348,11 @@ public partial class MainForm : Form
             rowControl.IsSelected = _selectedPhone == conv.Phone;
             rowControl.ConversationSelected += async (s, e) => await ConversationRowControl_ConversationSelected(conv.Phone);
 
-            // Añadir a ambos tabs (por ahora, luego filtrar por pending/unread)
             _flowReceived.Controls.Add(rowControl);
-            
-            // Solo añadir a Enviados si tiene LastOutboundAt
-            if (conv.LastOutboundAt.HasValue)
-            {
-                var rowControlSent = new ConversationRowControl
-                {
-                    Conversation = conv,
-                    Width = Math.Max(200, _flowSent.Width - 25),
-                    Margin = new Padding(0, 0, 0, Theme.Spacing4)
-                };
-                rowControlSent.IsSelected = _selectedPhone == conv.Phone;
-                rowControlSent.ConversationSelected += async (s, e) => await ConversationRowControl_ConversationSelected(conv.Phone);
-                _flowSent.Controls.Add(rowControlSent);
-            }
         }
         
         // Resume layout
         _flowReceived.ResumeLayout(true);
-        _flowSent.ResumeLayout(true);
     }
 
     private async Task ConversationRowControl_ConversationSelected(string phone)
@@ -486,14 +416,6 @@ public partial class MainForm : Form
         }
         
         foreach (Control ctrl in _flowReceived.Controls)
-        {
-            if (ctrl is ConversationRowControl row)
-            {
-                row.IsSelected = row.Conversation?.Phone == newPhone;
-            }
-        }
-        
-        foreach (Control ctrl in _flowSent.Controls)
         {
             if (ctrl is ConversationRowControl row)
             {
@@ -642,21 +564,9 @@ public partial class MainForm : Form
         }
     }
 
-    private async Task SearchReceivedAsync()
+    private async Task SearchConversationsAsync()
     {
-        var query = _txtSearchReceived.Text.Trim();
-        if (query == "Buscar por teléfono...") query = string.Empty;
-        if (_conversationsController != null)
-        {
-            await _conversationsController.LoadConversationsAsync(query);
-            _conversationsController.RefreshList();
-            RefreshConversationsList();
-        }
-    }
-
-    private async Task SearchSentAsync()
-    {
-        var query = _txtSearchSent.Text.Trim();
+        var query = _txtSearch.Text.Trim();
         if (query == "Buscar por teléfono...") query = string.Empty;
         if (_conversationsController != null)
         {
