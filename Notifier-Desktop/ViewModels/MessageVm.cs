@@ -10,4 +10,5 @@ public class MessageVm
     public string Text { get; set; } = string.Empty;
     public string From { get; set; } = string.Empty;
     public string To { get; set; } = string.Empty;
+    public string? SentBy { get; set; } // Nombre del recepcionista (solo para OUTBOUND, nullable)
 }

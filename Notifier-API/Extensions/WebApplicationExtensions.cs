@@ -191,7 +191,8 @@ public static class WebApplicationExtensions
                         body = m.Body,
                         type = m.Type,
                         direction = m.Direction,
-                        messageAt = m.MessageAt
+                        messageAt = m.MessageAt,
+                        sentBy = m.SentBy // Incluir SentBy (opcional, nullable)
                     })
                     .ToListAsync(ct);
 
@@ -270,7 +271,8 @@ public static class WebApplicationExtensions
                         recipient = m.Recipient,
                         body = m.Body,
                         direction = m.Direction,
-                        messageAt = m.MessageAt
+                        messageAt = m.MessageAt,
+                        sentBy = m.SentBy // Incluir SentBy en la respuesta
                     })
                     .ToListAsync(ct);
 
@@ -303,6 +305,7 @@ public static class WebApplicationExtensions
             SmsMessageRepository smsRepository,
             IHubContext<MessagesHub> hubContext,
             EsendexSettings esendexSettings,
+            NotificationsDbContext dbContext,
             CancellationToken ct) =>
         {
             try
@@ -348,6 +351,7 @@ public static class WebApplicationExtensions
                     body: body.Message,
                     type: "SMS",
                     messageAt: sendResult.SubmittedUtc,
+                    sentBy: body.SentBy, // Nombre del recepcionista (opcional)
                     cancellationToken: ct);
 
                 // Emitir SignalR si se guardó correctamente
@@ -374,6 +378,10 @@ public static class WebApplicationExtensions
                             customerPhoneForSignalR = toNormalized;
                         }
                         
+                        // Obtener SentBy del mensaje guardado para incluirlo en SignalR
+                        var savedMessage = await dbContext.SmsMessages.FindAsync(new object[] { savedId.Value }, ct);
+                        var sentBy = savedMessage?.SentBy;
+                        
                         await hubContext.Clients.All.SendAsync("NewSentMessage", new
                         {
                             id = savedId.Value.ToString(),
@@ -382,7 +390,8 @@ public static class WebApplicationExtensions
                             recipient = toNormalized, // Mantener formato E.164 con '+' para recipient
                             body = body.Message,
                             direction = 1,
-                            messageAt = sendResult.SubmittedUtc.ToString("O")
+                            messageAt = sendResult.SubmittedUtc.ToString("O"),
+                            sentBy = sentBy // Incluir SentBy si está disponible (opcional, no rompe clientes antiguos)
                         }, ct);
                     }
                     catch (Exception signalREx)

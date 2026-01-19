@@ -129,11 +129,12 @@ public class ApiClient
     public async Task<SendMessageResponse?> SendMessageAsync(
         string to,
         string message,
+        string? sentBy = null,
         CancellationToken ct = default)
     {
         try
         {
-            var request = new SendMessageRequest { To = to, Message = message };
+            var request = new SendMessageRequest { To = to, Message = message, SentBy = sentBy };
             var response = await _httpClient.PostAsJsonAsync("/api/v1/db/messages/send", request, ct);
             
             if (response.IsSuccessStatusCode)

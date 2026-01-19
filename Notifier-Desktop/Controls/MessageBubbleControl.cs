@@ -8,6 +8,7 @@ public partial class MessageBubbleControl : UserControl
     private MessageVm? _message;
     private readonly Label _lblText;
     private readonly Label _lblTime;
+    private readonly Label _lblSentBy;
     private readonly Panel _bubblePanel;
 
     public MessageVm? Message
@@ -54,8 +55,19 @@ public partial class MessageBubbleControl : UserControl
             Location = new Point(10, 30)
         };
 
+        _lblSentBy = new Label
+        {
+            Text = "",
+            Font = new Font(Font.FontFamily, 6.5f, FontStyle.Italic),
+            ForeColor = Color.FromArgb(80, 80, 80),
+            AutoSize = true,
+            Location = new Point(10, 45),
+            Visible = false
+        };
+
         _bubblePanel.Controls.Add(_lblText);
         _bubblePanel.Controls.Add(_lblTime);
+        _bubblePanel.Controls.Add(_lblSentBy);
 
         Controls.Add(_bubblePanel);
     }
@@ -87,6 +99,18 @@ public partial class MessageBubbleControl : UserControl
         _lblTime.Text = FormatTime(_message.At);
 
         var isOutbound = _message.Direction == MessageDirection.Outbound;
+        
+        // Mostrar "Respondió: {SentBy}" solo para mensajes outbound con SentBy
+        if (isOutbound && !string.IsNullOrWhiteSpace(_message.SentBy))
+        {
+            _lblSentBy.Text = $"Respondió: {_message.SentBy}";
+            _lblSentBy.Visible = true;
+        }
+        else
+        {
+            _lblSentBy.Text = "";
+            _lblSentBy.Visible = false;
+        }
 
         // Colores tipo WhatsApp
         if (isOutbound)
@@ -111,8 +135,10 @@ public partial class MessageBubbleControl : UserControl
             new Size(_lblText.MaximumSize.Width, int.MaxValue), 
             TextFormatFlags.WordBreak);
         
-        var bubbleHeight = Math.Max(textSize.Height + 25, 40);
-        var bubbleWidth = Math.Min(textSize.Width + 40, MaximumSize.Width - 20);
+        // Calcular altura adicional para SentBy si está visible
+        var sentByHeight = _lblSentBy.Visible ? _lblSentBy.Height + 3 : 0;
+        var bubbleHeight = Math.Max(textSize.Height + 25 + sentByHeight, 40);
+        var bubbleWidth = Math.Min(Math.Max(textSize.Width + 40, _lblSentBy.Visible ? _lblSentBy.Width + 40 : 0), MaximumSize.Width - 20);
         
         // Establecer Location y Size explícitamente (necesario con Dock=None)
         _bubblePanel.Location = new Point(Padding.Left, Padding.Top);
@@ -121,9 +147,18 @@ public partial class MessageBubbleControl : UserControl
             Math.Max(bubbleHeight, 40)
         );
         
+        // Posicionar _lblTime en la esquina inferior derecha
         _lblTime.Location = new Point(
             _bubblePanel.Width - _lblTime.Width - 10,
-            _bubblePanel.Height - _lblTime.Height - 5);
+            _bubblePanel.Height - _lblTime.Height - 5 - (_lblSentBy.Visible ? _lblSentBy.Height + 3 : 0));
+        
+        // Posicionar _lblSentBy debajo del texto, alineado a la izquierda
+        if (_lblSentBy.Visible)
+        {
+            _lblSentBy.Location = new Point(
+                10,
+                _lblText.Location.Y + textSize.Height + 5);
+        }
 
         // Asegurar que el UserControl tenga un tamaño mínimo visible
         Height = Math.Max(_bubblePanel.Height + Padding.Top + Padding.Bottom, 50);

@@ -10,6 +10,7 @@ public class MessageDto
     public string Type { get; set; } = string.Empty;
     public byte Direction { get; set; }
     public DateTime MessageAt { get; set; }
+    public string? SentBy { get; set; } // Nombre del recepcionista (solo para OUTBOUND, nullable)
 }
 
 public class MessagesResponse
@@ -24,6 +25,7 @@ public class SendMessageRequest
 {
     public string To { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
+    public string? SentBy { get; set; } // Nombre del recepcionista que envía el mensaje (opcional)
 }
 
 public class SendMessageResponse

@@ -640,8 +640,11 @@ public partial class MainForm : Form
 
         try
         {
-            // Enviar con número normalizado
-            var response = await _apiClient.SendMessageAsync(phoneNormalized, messageText);
+            // Enviar con número normalizado, incluyendo nombre del operador
+            var operatorName = !string.IsNullOrWhiteSpace(_settings.OperatorName) 
+                ? _settings.OperatorName 
+                : Environment.UserName;
+            var response = await _apiClient.SendMessageAsync(phoneNormalized, messageText, operatorName);
             if (response?.Success == true)
             {
                 _txtMessage.Clear();
@@ -752,7 +755,8 @@ public partial class MainForm : Form
                 At = message.MessageAt,
                 Text = message.Body,
                 From = message.Originator,
-                To = message.Recipient
+                To = message.Recipient,
+                SentBy = message.SentBy // Mapear SentBy (será null para inbound)
             };
             _chatController.AddMessage(msgVm);
             RefreshChat();
@@ -816,7 +820,8 @@ public partial class MainForm : Form
                 At = message.MessageAt,
                 Text = message.Body,
                 From = message.Originator,
-                To = message.Recipient
+                To = message.Recipient,
+                SentBy = message.SentBy // Mapear SentBy desde SignalR
             };
             _chatController.AddMessage(msgVm);
             RefreshChat();

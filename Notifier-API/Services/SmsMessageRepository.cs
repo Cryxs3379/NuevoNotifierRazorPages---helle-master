@@ -123,6 +123,7 @@ public class SmsMessageRepository
     /// <summary>
     /// Guarda un mensaje enviado en la base de datos
     /// </summary>
+    /// <param name="sentBy">Nombre del recepcionista que envió el mensaje (opcional)</param>
     /// <returns>Id del mensaje guardado, o null si falló</returns>
     public async Task<long?> SaveSentAsync(
         string originator,
@@ -130,6 +131,7 @@ public class SmsMessageRepository
         string body,
         string type,
         DateTime? messageAt,
+        string? sentBy = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -142,7 +144,8 @@ public class SmsMessageRepository
                 Type = type ?? string.Empty,
                 Direction = 1, // Sent
                 MessageAt = messageAt ?? DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                SentBy = string.IsNullOrWhiteSpace(sentBy) ? null : sentBy
             };
 
             _dbContext.SmsMessages.Add(message);

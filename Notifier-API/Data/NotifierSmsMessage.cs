@@ -11,4 +11,5 @@ public class NotifierSmsMessage
     public DateTime MessageAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? ProviderMessageId { get; set; }
+    public string? SentBy { get; set; } // Nombre del recepcionista que envió el mensaje (solo para OUTBOUND)
 }

@@ -319,6 +319,14 @@ public class SignalRService : IDisposable, IAsyncDisposable
             }
         }
 
+        // 8. Mapear SentBy (opcional, solo para OUTBOUND)
+        var sentByProp = type.GetProperty("sentBy") ?? type.GetProperty("SentBy");
+        if (sentByProp != null)
+        {
+            var sentByValue = sentByProp.GetValue(obj)?.ToString();
+            dtoResult.SentBy = string.IsNullOrWhiteSpace(sentByValue) ? null : sentByValue.Trim();
+        }
+
         // Logs de diagnóstico: valores mapeados
 #if DEBUG
         Debug.WriteLine($"[SignalR] Mapped values - Id={dtoResult.Id}, Originator='{dtoResult.Originator}', " +
@@ -478,6 +486,14 @@ public class SignalRService : IDisposable, IAsyncDisposable
                     else if (!string.IsNullOrWhiteSpace(dto.Recipient))
                         dto.CustomerPhone = dto.Recipient;
                 }
+            }
+
+            // 9. Mapear SentBy (opcional, solo para OUTBOUND)
+            if (je.TryGetProperty("sentBy", out var sentByElement) || 
+                je.TryGetProperty("SentBy", out sentByElement))
+            {
+                var sentByValue = sentByElement.GetString();
+                dto.SentBy = string.IsNullOrWhiteSpace(sentByValue) ? null : sentByValue.Trim();
             }
 
             // Log si no se pudo obtener phone

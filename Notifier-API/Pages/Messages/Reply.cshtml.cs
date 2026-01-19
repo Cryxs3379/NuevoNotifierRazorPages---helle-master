@@ -7,6 +7,7 @@ using NotifierAPI.Models;
 using NotifierAPI.Configuration;
 using NotifierAPI.Hubs;
 using NotifierAPI.Helpers;
+using NotifierAPI.Data;
 using System.Text.RegularExpressions;
 
 namespace NotifierAPI.Pages.Messages;
@@ -85,12 +86,14 @@ public class MessagesReplyModel : PageModel
 
             // Intentar guardar en BD (después del envío exitoso)
             var originator = _esendexSettings.AccountReference ?? AccountRef ?? "UNKNOWN";
+            // Para Razor Pages, no tenemos sentBy directo, usar null (mensajes desde web no tienen recepcionista asignado)
             var savedId = await _smsRepository.SaveSentAsync(
                 originator: originator,
                 recipient: To,
                 body: Message,
                 type: "SMS",
                 messageAt: result.SubmittedUtc,
+                sentBy: null, // Razor Pages no tiene recepcionista
                 cancellationToken: HttpContext.RequestAborted);
             
             if (!savedId.HasValue)
@@ -133,6 +136,21 @@ public class MessagesReplyModel : PageModel
                     customerPhoneForSignalR = To;
                 }
                 
+                // Obtener SentBy del mensaje guardado para incluirlo en SignalR
+                // Nota: Para Razor Pages, SentBy será null (no hay recepcionista asignado desde web)
+                string? sentBy = null;
+                try
+                {
+                    using var scope = HttpContext.RequestServices.CreateScope();
+                    var dbContext = scope.ServiceProvider.GetRequiredService<NotificationsDbContext>();
+                    var savedMessage = await dbContext.SmsMessages.FindAsync(new object[] { savedId.Value }, HttpContext.RequestAborted);
+                    sentBy = savedMessage?.SentBy;
+                }
+                catch
+                {
+                    // Si falla obtener SentBy, continuar sin él (no crítico)
+                }
+                
                 await _hubContext.Clients.All.SendAsync("NewSentMessage", new
                 {
                     id = savedId.Value.ToString(),
@@ -141,7 +159,8 @@ public class MessagesReplyModel : PageModel
                     recipient = To, // Mantener formato E.164 con '+' para recipient
                     body = Message,
                     direction = 1,
-                    messageAt = result.SubmittedUtc.ToString("O")
+                    messageAt = result.SubmittedUtc.ToString("O"),
+                    sentBy = sentBy // Incluir SentBy si está disponible (opcional, no rompe clientes antiguos)
                 }, HttpContext.RequestAborted);
             }
             catch (Exception signalREx)

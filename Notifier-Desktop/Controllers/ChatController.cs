@@ -71,7 +71,8 @@ public class ChatController
                         At = msg.MessageAt,
                         Text = msg.Body,
                         From = msg.Originator,
-                        To = msg.Recipient
+                        To = msg.Recipient,
+                        SentBy = msg.SentBy // Mapear SentBy desde DTO
                     };
                     
 #if DEBUG
