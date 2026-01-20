@@ -9,60 +9,100 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
+    @{
+        var currentPage = ViewContext.RouteData.Values["page"]?.ToString() ?? string.Empty;
+        var currentDirection = Context.Request.Query["direction"].ToString();
+        var isMessagesPage = currentPage.Equals("/Messages/Index", StringComparison.OrdinalIgnoreCase);
+        var isOutbound = isMessagesPage && currentDirection.Equals("outbound", StringComparison.OrdinalIgnoreCase);
+        var isInbound = isMessagesPage && !isOutbound;
+    }
     <header>
-        <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-            <div class="container-fluid">
+        <nav class="navbar navbar-expand-lg navbar-light app-navbar">
+            <div class="container-xxl">
                 <a class="navbar-brand" href="/">
-                    <i class="bi bi-envelope-fill me-2"></i>
-                    Notifier
+                    <span class="brand-mark">
+                        <i class="bi bi-envelope-fill"></i>
+                    </span>
+                    <span>Notifier</span>
                 </a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="collapse navbar-collapse" id="navbarNav">
-                    <ul class="navbar-nav">
+                    <ul class="navbar-nav me-auto">
                         <li class="nav-item">
-                            <a class="nav-link" asp-page="/Index">
-                                <i class="bi bi-house-fill"></i> Inicio
+                            <a class="nav-link @(currentPage.Equals("/Index", StringComparison.OrdinalIgnoreCase) ? "active" : "")" asp-page="/Index">
+                                <i class="bi bi-house-fill"></i>
+                                <span>Inicio</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" asp-page="/Messages/Index">
-                                <i class="bi bi-chat-dots-fill"></i> Mensajes
+                            <a class="nav-link @(isInbound ? "active" : "")" asp-page="/Messages/Index">
+                                <i class="bi bi-chat-dots-fill"></i>
+                                <span>Mensajes</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" asp-page="/Messages/Index" asp-route-direction="outbound">
-                                <i class="bi bi-box-arrow-up-right"></i> Enviados
+                            <a class="nav-link @(isOutbound ? "active" : "")" asp-page="/Messages/Index" asp-route-direction="outbound">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                                <span>Enviados</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" asp-page="/Messages/Reply">
-                                <i class="bi bi-send-fill"></i> Enviar Mensaje
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" asp-page="/Calls/Index">
-                                <i class="bi bi-telephone-fill"></i> Llamadas Perdidas
+                            <a class="nav-link @(currentPage.Equals("/Calls/Index", StringComparison.OrdinalIgnoreCase) ? "active" : "")" asp-page="/Calls/Index">
+                                <i class="bi bi-telephone-fill"></i>
+                                <span>Llamadas</span>
                             </a>
                         </li>
                     </ul>
+                    <div class="d-flex align-items-center gap-2">
+                        <span id="globalConnectionStatus" class="connection-status disconnected d-none d-md-flex">
+                            <i class="bi bi-circle-fill"></i>
+                            <span>Conectando...</span>
+                        </span>
+                        <a class="btn btn-cta btn-sm" asp-page="/Messages/Reply">
+                            <i class="bi bi-send-fill"></i>
+                            <span class="d-none d-md-inline">Enviar Mensaje</span>
+                            <span class="d-md-none">Enviar</span>
+                        </a>
+                    </div>
                 </div>
             </div>
         </nav>
     </header>
     
-    <main class="container-fluid mt-4">
+    <main class="app-container">
         @RenderBody()
     </main>
     
-    <footer class="footer mt-auto py-3 bg-light">
-        <div class="container text-center text-muted">
-            <small>&copy; 2025 - Notifier - Sistema de Notificaciones</small>
+    <footer class="footer">
+        <div class="container-xxl d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
+            <small>&copy; 2025 Notifier</small>
+            <small class="text-muted">Sistema de Notificaciones</small>
         </div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global connection status update (if SignalR is available)
+        function updateGlobalConnectionStatus(status, text) {
+            const statusEl = document.getElementById('globalConnectionStatus');
+            if (!statusEl) return;
+            
+            statusEl.className = 'connection-status ' + status;
+            const icon = statusEl.querySelector('i');
+            const textSpan = statusEl.querySelector('span:last-child');
+            
+            if (icon) {
+                icon.className = 'bi bi-circle-fill';
+            }
+            if (textSpan) {
+                textSpan.textContent = text;
+            }
+            
+            statusEl.classList.remove('d-none');
+        }
+    </script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

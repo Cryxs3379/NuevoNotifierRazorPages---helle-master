@@ -4,13 +4,21 @@
     ViewData["Title"] = "Llamadas Perdidas";
 }
 
-<div class="row">
-    <div class="col-12">
-        <h2>
-            <i class="bi bi-telephone-fill text-danger"></i>
+<!-- Page Header -->
+<div class="page-header">
+    <div class="page-header-title">
+        <h1>
+            <i class="bi bi-telephone-fill text-danger me-2"></i>
             Llamadas Perdidas
-        </h2>
-        <p class="text-muted">Consulta el historial de llamadas perdidas del sistema</p>
+        </h1>
+        <p>Consulta el historial de llamadas perdidas del sistema</p>
+    </div>
+    <div class="page-header-actions">
+        <a asp-page="/Messages/Reply" class="btn btn-primary btn-sm">
+            <i class="bi bi-send-fill"></i>
+            <span class="d-none d-md-inline">Enviar SMS</span>
+            <span class="d-md-none">SMS</span>
+        </a>
     </div>
 </div>
 
@@ -19,7 +27,7 @@
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
         <i class="bi bi-exclamation-triangle-fill"></i>
         <strong>Error:</strong> @Model.ErrorMessage
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
     </div>
 }
 
@@ -32,111 +40,126 @@
     </div>
 }
 
-<!-- Estadísticas -->
+<!-- KPI Cards -->
 @if (Model.Stats != null)
 {
-    <div class="row mb-4" id="statsCards">
-        <div class="col-md-3 mb-3">
-            <div class="card shadow-sm border-danger">
-                <div class="card-body text-center">
-                    <i class="bi bi-telephone-x-fill text-danger" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2 mb-0" id="statsTotal">@Model.Stats.TotalMissedCalls</h3>
-                    <p class="text-muted mb-0">Total</p>
+    <div class="row g-3 mb-4" id="statsCards">
+        <div class="col-lg-3 col-md-6">
+            <div class="card kpi-card border-start border-start-4 border-start-danger">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <p class="text-muted small mb-1">Total</p>
+                            <h2 class="mb-0 fw-bold" id="statsTotal">@Model.Stats.TotalMissedCalls</h2>
+                        </div>
+                        <div class="kpi-icon text-danger">
+                            <i class="bi bi-telephone-x-fill" style="font-size: 1.4rem;"></i>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3 mb-3">
-            <div class="card shadow-sm border-warning">
-                <div class="card-body text-center">
-                    <i class="bi bi-calendar-day-fill text-warning" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2 mb-0" id="statsToday">@Model.Stats.TodayMissedCalls</h3>
-                    <p class="text-muted mb-0">Hoy</p>
+        <div class="col-lg-3 col-md-6">
+            <div class="card kpi-card border-start border-start-4 border-start-warning">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <p class="text-muted small mb-1">Hoy</p>
+                            <h2 class="mb-0 fw-bold" id="statsToday">@Model.Stats.TodayMissedCalls</h2>
+                        </div>
+                        <div class="kpi-icon text-warning">
+                            <i class="bi bi-calendar-day-fill" style="font-size: 1.4rem;"></i>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3 mb-3">
-            <div class="card shadow-sm border-info">
-                <div class="card-body text-center">
-                    <i class="bi bi-calendar-week-fill text-info" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2 mb-0" id="statsWeek">@Model.Stats.ThisWeekMissedCalls</h3>
-                    <p class="text-muted mb-0">Esta Semana</p>
+        <div class="col-lg-3 col-md-6">
+            <div class="card kpi-card border-start border-start-4 border-start-info">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <p class="text-muted small mb-1">Esta Semana</p>
+                            <h2 class="mb-0 fw-bold" id="statsWeek">@Model.Stats.ThisWeekMissedCalls</h2>
+                        </div>
+                        <div class="kpi-icon text-info">
+                            <i class="bi bi-calendar-week-fill" style="font-size: 1.4rem;"></i>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3 mb-3">
-            <div class="card shadow-sm border-primary">
-                <div class="card-body text-center">
-                    <i class="bi bi-clock-history text-primary" style="font-size: 2rem;"></i>
-                    <p class="text-muted mb-1 mt-2">Última llamada</p>
-                    <p class="mb-0"><small id="statsLastCall">@Model.LastCallTime</small></p>
+        <div class="col-lg-3 col-md-6">
+            <div class="card kpi-card border-start border-start-4 border-start-primary">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <p class="text-muted small mb-1">Última llamada</p>
+                            <p class="mb-0 fw-semibold"><small id="statsLastCall">@Model.LastCallTime</small></p>
+                        </div>
+                        <div class="kpi-icon text-primary">
+                            <i class="bi bi-clock-history" style="font-size: 1.4rem;"></i>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 }
 
-<!-- Filtros -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <form method="get" class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label">Límite de registros</label>
-                        <select name="limit" class="form-select" asp-for="Limit">
-                            <option value="10">10</option>
-                            <option value="25">25</option>
-                            <option value="50">50</option>
-                            <option value="100">100</option>
-                            <option value="200">200</option>
-                        </select>
-                    </div>
-                    
-                    <div class="col-md-4 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-search"></i> Buscar
-                        </button>
-                    </div>
-                    
-                    <div class="col-md-4 d-flex align-items-end">
-                        <button type="button" class="btn btn-outline-secondary w-100" id="refreshCallsBtn" onclick="refreshCallsPartial()">
-                            <i class="bi bi-arrow-clockwise" id="refreshCallsIcon"></i> Actualizar
-                        </button>
-                    </div>
-                </form>
-            </div>
+<!-- Filter Bar -->
+<div class="filter-bar mb-4">
+    <form method="get" class="row g-3 align-items-end">
+        <div class="col-md-4">
+            <label class="form-label">
+                <i class="bi bi-list-ul"></i> Límite de registros
+            </label>
+            <select name="limit" class="form-select" asp-for="Limit">
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+            </select>
         </div>
-    </div>
+        
+        <div class="col-md-4">
+            <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-search"></i> Buscar
+            </button>
+        </div>
+        
+        <div class="col-md-4">
+            <button type="button" class="btn btn-ghost w-100" id="refreshCallsBtn" onclick="refreshCallsPartial()">
+                <i class="bi bi-arrow-clockwise" id="refreshCallsIcon"></i> Actualizar
+            </button>
+        </div>
+    </form>
 </div>
 
 <!-- Tabla de llamadas perdidas -->
 @if (Model.MissedCalls != null && Model.MissedCalls.Any())
 {
-    <div class="row">
-        <div class="col-12">
-            <div class="card shadow-sm">
-                <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
-                    <span>
-                        <i class="bi bi-list-ul"></i>
-                        Mostrando @Model.MissedCalls.Count llamadas perdidas
-                    </span>
-                    <a asp-page="/Messages/Reply" class="btn btn-light btn-sm">
-                        <i class="bi bi-send-fill"></i> Enviar SMS
-                    </a>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover table-striped mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Fecha y Hora</th>
-                                    <th>Número de Teléfono</th>
-                                    <th>Estado</th>
-                                    <th>¿Volvió a llamar?</th>
-                                    <th class="text-center">Acciones</th>
-                                </tr>
-                            </thead>
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-list-ul text-primary"></i>
+                <span>Mostrando <strong>@Model.MissedCalls.Count</strong> llamadas perdidas</span>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-wrapper">
+                <table class="table table-striped table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th style="width: 8%;">ID</th>
+                            <th style="width: 20%;">Fecha y Hora</th>
+                            <th style="width: 20%;">Número</th>
+                            <th style="width: 15%;">Estado</th>
+                            <th style="width: 20%;">¿Volvió a llamar?</th>
+                            <th class="text-center" style="width: 17%;">Acciones</th>
+                        </tr>
+                    </thead>
                             <tbody id="callsTableBody">
                                 <!-- Spinner de carga (oculto inicialmente) -->
                                 <tr id="loadingRow" style="display: none;">
@@ -215,27 +238,32 @@
                                         <td class="text-center">
                                             <a asp-page="/Messages/Reply" 
                                                asp-route-to="@call.PhoneNumber" 
-                                               class="btn btn-sm btn-outline-primary"
-                                               title="Enviar SMS a este número">
-                                                <i class="bi bi-send-fill"></i> SMS
+                                               class="btn btn-sm btn-outline-primary btn-icon"
+                                               aria-label="Enviar SMS a este número"
+                                               data-bs-toggle="tooltip"
+                                               data-bs-placement="top"
+                                               title="Enviar SMS">
+                                                <i class="bi bi-send-fill"></i>
                                             </a>
                                         </td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
 }
 else if (Model.MissedCalls != null)
 {
-    <div class="alert alert-info">
-        <i class="bi bi-info-circle-fill"></i>
-        <strong>No hay llamadas perdidas.</strong>
-        <p class="mb-0">No se encontraron llamadas perdidas en el sistema.</p>
+    <div class="card">
+        <div class="card-body">
+            <div class="empty-state">
+                <i class="bi bi-telephone-x"></i>
+                <h3>No hay llamadas perdidas</h3>
+                <p>No se encontraron llamadas perdidas en el sistema.</p>
+            </div>
+        </div>
     </div>
 }
 
@@ -310,9 +338,12 @@ else if (Model.MissedCalls != null)
                     <td>${calledAgainBadge}</td>
                     <td class="text-center">
                         <a href="/Messages/Reply?to=${encodeURIComponent(call.phoneNumber)}" 
-                           class="btn btn-sm btn-outline-primary"
-                           title="Enviar SMS a este número">
-                            <i class="bi bi-send-fill"></i> SMS
+                           class="btn btn-sm btn-outline-primary btn-icon"
+                           aria-label="Enviar SMS a este número"
+                           data-bs-toggle="tooltip"
+                           data-bs-placement="top"
+                           title="Enviar SMS">
+                            <i class="bi bi-send-fill"></i>
                         </a>
                     </td>
                 </tr>`;
@@ -394,6 +425,12 @@ else if (Model.MissedCalls != null)
                 } else {
                     tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="6" class="text-center py-4 text-muted">No hay llamadas perdidas</td></tr>');
                 }
+                
+                // Inicializar tooltips
+                const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                tooltipTriggerList.map(function (tooltipTriggerEl) {
+                    return new bootstrap.Tooltip(tooltipTriggerEl);
+                });
                 
                 // Ocultar loading
                 if (loadingRow) loadingRow.style.display = 'none';

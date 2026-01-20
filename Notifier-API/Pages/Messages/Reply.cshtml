@@ -2,26 +2,29 @@
 @model MessagesReplyModel
 @{
     ViewData["Title"] = "Enviar Mensaje SMS";
+    var replyTo = Request.Query["to"].ToString();
+    var isReply = !string.IsNullOrWhiteSpace(replyTo);
 }
 
-<div class="row">
-    <div class="col-12">
-        <h2>
-            <i class="bi bi-send-fill text-success"></i>
+<!-- Page Header -->
+<div class="page-header">
+    <div class="page-header-title">
+        <h1>
+            <i class="bi bi-send-fill text-primary me-2"></i>
             Enviar Mensaje SMS
-        </h2>
-        <p class="text-muted">Envía un mensaje SMS a cualquier número de teléfono</p>
+        </h1>
+        <p>Envía un mensaje SMS a cualquier número de teléfono</p>
     </div>
 </div>
 
 <div class="row">
-    <div class="col-lg-8 col-md-10 mx-auto">
+    <div class="col-lg-8 col-xl-7 mx-auto">
         @if (Model.SuccessMessage != null)
         {
             <div class="alert alert-success alert-dismissible fade show" role="alert">
                 <i class="bi bi-check-circle-fill"></i>
                 <strong>¡Éxito!</strong> @Model.SuccessMessage
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
             </div>
         }
 
@@ -30,19 +33,34 @@
             <div class="alert alert-danger alert-dismissible fade show" role="alert">
                 <i class="bi bi-exclamation-triangle-fill"></i>
                 <strong>Error:</strong> @Model.ErrorMessage
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
             </div>
         }
 
-        <div class="card shadow-sm">
-            <div class="card-header bg-success text-white">
-                <i class="bi bi-envelope-fill"></i> Nuevo Mensaje
+        @if (isReply)
+        {
+            <div class="alert alert-info mb-4">
+                <i class="bi bi-reply-fill"></i>
+                <div>
+                    <strong>Respondiendo a:</strong>
+                    <span class="phone-number">@replyTo</span>
+                </div>
+            </div>
+        }
+
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-envelope-fill text-primary me-2"></i>
+                    Enviar SMS
+                </h5>
             </div>
             <div class="card-body">
                 <form method="post">
-                    <div class="mb-3">
+                    <div class="mb-4">
                         <label for="To" class="form-label">
-                            <i class="bi bi-telephone-fill"></i> Número de Destino
+                            <i class="bi bi-telephone-fill"></i>
+                            Número de Destino
                             <span class="text-danger">*</span>
                         </label>
                         <input type="text" 
@@ -52,33 +70,39 @@
                                placeholder="+34600123456"
                                required />
                         <div class="form-text">
-                            Formato internacional (E.164): +34600123456
+                            <i class="bi bi-info-circle"></i> Formato internacional (E.164): +34600123456
                         </div>
                         <span asp-validation-for="To" class="invalid-feedback"></span>
                     </div>
 
-                    <div class="mb-3">
-                        <label for="Message" class="form-label">
-                            <i class="bi bi-chat-text-fill"></i> Mensaje
-                            <span class="text-danger">*</span>
-                        </label>
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label for="Message" class="form-label mb-0">
+                                <i class="bi bi-chat-text-fill"></i>
+                                Mensaje
+                                <span class="text-danger">*</span>
+                            </label>
+                            <div class="text-muted small">
+                                <span id="charCount">0</span> / 612 caracteres
+                                <span id="smsCount" class="badge bg-secondary ms-2">1 SMS</span>
+                            </div>
+                        </div>
                         <textarea class="form-control @(ModelState.GetFieldValidationState("Message") == Microsoft.AspNetCore.Mvc.ModelBinding.ModelValidationState.Invalid ? "is-invalid" : "")" 
                                   id="Message" 
                                   asp-for="Message" 
-                                  rows="5" 
+                                  rows="6" 
                                   placeholder="Escribe tu mensaje aquí..."
                                   maxlength="612"
+                                  style="resize: vertical;"
                                   required></textarea>
-                        <div class="form-text">
-                            <span id="charCount">0</span> / 612 caracteres
-                            <span id="smsCount" class="ms-2">(1 SMS)</span>
-                        </div>
                         <span asp-validation-for="Message" class="invalid-feedback"></span>
                     </div>
 
-                    <div class="mb-3">
+                    <div class="mb-4">
                         <label for="AccountRef" class="form-label">
-                            <i class="bi bi-tag-fill"></i> Account Reference (opcional)
+                            <i class="bi bi-tag-fill"></i>
+                            Account Reference
+                            <span class="text-muted small">(opcional)</span>
                         </label>
                         <input type="text" 
                                class="form-control" 
@@ -90,11 +114,27 @@
                         </div>
                     </div>
 
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                        <a asp-page="/Messages/Index" class="btn btn-outline-secondary">
-                            <i class="bi bi-arrow-left"></i> Cancelar
+                    <!-- Plantillas rápidas (solo UI) -->
+                    <div class="mb-4">
+                        <label class="form-label small text-muted mb-2">Plantillas rápidas</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm template-btn" data-template="Hola, gracias por contactarnos. ¿En qué podemos ayudarte?">
+                                <i class="bi bi-chat-quote"></i> Saludo
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm template-btn" data-template="Gracias por su mensaje. Nos pondremos en contacto con usted a la mayor brevedad posible.">
+                                <i class="bi bi-clock"></i> Respuesta rápida
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm template-btn" data-template="Su consulta ha sido recibida. Le responderemos pronto.">
+                                <i class="bi bi-check-circle"></i> Confirmación
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 justify-content-end">
+                        <a asp-page="/Messages/Index" class="btn btn-ghost">
+                            <i class="bi bi-arrow-left"></i> Volver a mensajes
                         </a>
-                        <button type="submit" class="btn btn-success" id="sendBtn">
+                        <button type="submit" class="btn btn-primary" id="sendBtn">
                             <i class="bi bi-send-fill"></i> Enviar Mensaje
                         </button>
                     </div>
@@ -102,21 +142,24 @@
             </div>
         </div>
 
-        <div class="card mt-4 shadow-sm">
-            <div class="card-header bg-info text-white">
-                <i class="bi bi-info-circle-fill"></i> Información
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-info-circle-fill text-info me-2"></i>
+                    Guía rápida
+                </h6>
             </div>
             <div class="card-body">
-                <h6>Formato del número de teléfono:</h6>
-                <ul class="mb-2">
+                <h6 class="fw-semibold mb-2">Formato del número de teléfono:</h6>
+                <ul class="mb-3 small">
                     <li>Debe comenzar con <code>+</code></li>
                     <li>Seguido del código de país (ej: 34 para España)</li>
                     <li>Luego el número sin espacios ni guiones</li>
                     <li>Longitud: 6-15 dígitos</li>
                 </ul>
                 
-                <h6>Ejemplos válidos:</h6>
-                <ul class="mb-0">
+                <h6 class="fw-semibold mb-2">Ejemplos válidos:</h6>
+                <ul class="mb-0 small">
                     <li><code>+34600123456</code> (España)</li>
                     <li><code>+1234567890</code> (USA)</li>
                     <li><code>+442071234567</code> (UK)</li>
@@ -128,58 +171,76 @@
 
 @section Scripts {
     <script>
-        // Contador de caracteres y SMS
-        document.addEventListener('DOMContentLoaded', function() {
-            const messageTextarea = document.getElementById('Message');
-            const charCountSpan = document.getElementById('charCount');
-            const smsCountSpan = document.getElementById('smsCount');
+            // Contador de caracteres y SMS
+            document.addEventListener('DOMContentLoaded', function() {
+                const messageTextarea = document.getElementById('Message');
+                const charCountSpan = document.getElementById('charCount');
+                const smsCountSpan = document.getElementById('smsCount');
 
-            function updateCounts() {
-                const length = messageTextarea.value.length;
-                charCountSpan.textContent = length;
-                const smsCount = Math.ceil(length / 160) || 1;
-                smsCountSpan.textContent = `(${smsCount} SMS)`;
-                if (smsCount > 1) {
-                    smsCountSpan.classList.add('text-warning');
-                } else {
-                    smsCountSpan.classList.remove('text-warning');
+                function updateCounts() {
+                    const length = messageTextarea.value.length;
+                    charCountSpan.textContent = length;
+                    const smsCount = Math.ceil(length / 160) || 1;
+                    smsCountSpan.textContent = `${smsCount} SMS`;
+                    
+                    // Actualizar badge según cantidad
+                    smsCountSpan.className = 'badge ms-2';
+                    if (smsCount === 1) {
+                        smsCountSpan.classList.add('bg-secondary');
+                    } else if (smsCount <= 3) {
+                        smsCountSpan.classList.add('bg-warning', 'text-dark');
+                    } else {
+                        smsCountSpan.classList.add('bg-danger');
+                    }
                 }
-            }
 
-            messageTextarea.addEventListener('input', updateCounts);
-            updateCounts(); // Inicializar
+                messageTextarea.addEventListener('input', updateCounts);
+                updateCounts(); // Inicializar
 
-            // Validación del formulario
-            const form = messageTextarea.closest('form');
-            form.addEventListener('submit', function(e) {
+                // Plantillas rápidas
+                document.querySelectorAll('.template-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const template = this.getAttribute('data-template');
+                        messageTextarea.value = template;
+                        messageTextarea.focus();
+                        updateCounts();
+                    });
+                });
+
+                // Validación del formulario
+                const form = messageTextarea.closest('form');
+                form.addEventListener('submit', function(e) {
+                    const toInput = document.getElementById('To');
+                    const phoneRegex = /^\+\d{6,15}$/;
+                    if (!phoneRegex.test(toInput.value)) {
+                        e.preventDefault();
+                        toInput.classList.add('is-invalid');
+                        alert('Por favor, ingresa un número de teléfono válido en formato E.164 (+34600123456)');
+                        return false;
+                    }
+                    if (messageTextarea.value.trim().length === 0) {
+                        e.preventDefault();
+                        messageTextarea.classList.add('is-invalid');
+                        alert('Por favor, escribe un mensaje');
+                        return false;
+                    }
+                    const sendBtn = document.getElementById('sendBtn');
+                    sendBtn.disabled = true;
+                    sendBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
+                });
+
+                // Pre-poblar y normalizar el número si viene por query string
+                const urlParams = new URLSearchParams(window.location.search);
+                const toParam = urlParams.get('to');
                 const toInput = document.getElementById('To');
-                const phoneRegex = /^\+\d{6,15}$/;
-                if (!phoneRegex.test(toInput.value)) {
-                    e.preventDefault();
-                    toInput.classList.add('is-invalid');
-                    alert('Por favor, ingresa un número de teléfono válido en formato E.164 (+34600123456)');
-                    return false;
+                if (toParam && toInput.value === '') {
+                    let normalized = toParam.replace(/[\s-]/g, '');
+                    if (!normalized.startsWith('+')) {
+                        normalized = '+' + normalized;
+                    }
+                    toInput.value = normalized;
                 }
-                if (messageTextarea.value.trim().length === 0) {
-                    e.preventDefault();
-                    messageTextarea.classList.add('is-invalid');
-                    alert('Por favor, escribe un mensaje');
-                    return false;
-                }
-                const sendBtn = document.getElementById('sendBtn');
-                sendBtn.disabled = true;
-                sendBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
             });
-
-            // Pre-poblar y normalizar el número si viene por query string
-            const urlParams = new URLSearchParams(window.location.search);
-            const toParam = urlParams.get('to');
-            const toInput = document.getElementById('To');
-            if (toParam && toInput.value === '') {
-                const normalized = toParam.replace(/[\s-]/g, '').replace(/^(\d{6,15})$/, '+$1');
-                toInput.value = normalized;
-            }
-        });
     </script>
 }
 
