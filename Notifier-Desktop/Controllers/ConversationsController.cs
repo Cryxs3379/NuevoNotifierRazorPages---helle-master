@@ -228,24 +228,39 @@ public class ConversationsController
             
             if (isInbound)
             {
+                // Inbound: siempre marca como pendiente y no leído
                 conv.Unread = true;
                 conv.PendingReply = true;
+                if (conv.UnreadCount.HasValue)
+                {
+                    conv.UnreadCount = (conv.UnreadCount.Value + 1);
+                }
+#if DEBUG
+                System.Diagnostics.Debug.WriteLine($"[ConversationsController] Inbound -> PendingReply=true, Unread=true for phone {normalizedPhone}");
+#endif
             }
             else
             {
+                // Outbound: marca como atendida y leída
                 conv.LastOutboundAt = message.MessageAt;
+                conv.PendingReply = false;
+                conv.Unread = false;
+                if (conv.UnreadCount.HasValue)
+                {
+                    conv.UnreadCount = 0;
+                }
                 // Actualizar LastRespondedBy si el mensaje es OUTBOUND y tiene SentBy
                 if (!string.IsNullOrWhiteSpace(message.SentBy))
                 {
                     conv.LastRespondedBy = message.SentBy;
                 }
-                // Si hay un outbound más reciente que el último inbound, puede que ya no esté pendiente
-                // Pero no podemos saberlo sin consultar el backend, así que solo actualizamos LastOutboundAt
-                // El backend actualizará PendingReply cuando se consulte
+#if DEBUG
+                System.Diagnostics.Debug.WriteLine($"[ConversationsController] Outbound -> PendingReply=false, Unread=false for phone {normalizedPhone}");
+#endif
             }
             
 #if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[ConversationsController] Updated conversation from SignalR: Phone={normalizedPhone}, IsInbound={isInbound}");
+            System.Diagnostics.Debug.WriteLine($"[ConversationsController] Updated conversation from SignalR: Phone={normalizedPhone}, IsInbound={isInbound}, PendingReply={conv.PendingReply}");
 #endif
         }
 

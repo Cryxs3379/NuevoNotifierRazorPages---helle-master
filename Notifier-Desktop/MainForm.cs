@@ -713,41 +713,56 @@ public partial class MainForm : Form
             return;
         }
 
+        // Obtener customerPhone: inbound usa Originator
         var customerPhone = !string.IsNullOrWhiteSpace(message.CustomerPhone) 
             ? message.CustomerPhone 
-            : message.Originator; // Fallback para compatibilidad
+            : message.Originator;
 
-        // Log de warning si CustomerPhone sigue vacío después del fix
         if (string.IsNullOrWhiteSpace(customerPhone))
         {
 #if DEBUG
             System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: CustomerPhone is empty for NewMessage. " +
                 $"Originator='{message.Originator}', Recipient='{message.Recipient}', Direction={message.Direction}");
 #endif
-            return; // No procesar si no hay customerPhone
+            return;
         }
 
-        // Normalizar customerPhone para comparación (puede venir con/sin '+')
+        // Normalizar SIEMPRE
         var customerPhoneNormalized = Helpers.PhoneNormalizer.Normalize(customerPhone);
         if (string.IsNullOrEmpty(customerPhoneNormalized))
-            customerPhoneNormalized = customerPhone; // Usar original si no se puede normalizar
+        {
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: Could not normalize customerPhone '{customerPhone}', using original");
+#endif
+            customerPhoneNormalized = customerPhone;
+        }
 
-        // Actualizar o crear conversación en lista (tiempo real)
+        // Normalizar _selectedPhone para comparación
+        var selectedPhoneNormalized = !string.IsNullOrWhiteSpace(_selectedPhone)
+            ? Helpers.PhoneNormalizer.Normalize(_selectedPhone)
+            : null;
+        if (string.IsNullOrEmpty(selectedPhoneNormalized) && !string.IsNullOrWhiteSpace(_selectedPhone))
+        {
+            selectedPhoneNormalized = _selectedPhone; // Fallback si no se puede normalizar
+        }
+
+        var isMatch = !string.IsNullOrWhiteSpace(selectedPhoneNormalized) && 
+                      selectedPhoneNormalized == customerPhoneNormalized;
+
+#if DEBUG
+        System.Diagnostics.Debug.WriteLine($"[MainForm] Inbound received. selected='{_selectedPhone}' (normalized='{selectedPhoneNormalized}'), " +
+            $"customer='{customerPhone}' (normalized='{customerPhoneNormalized}'), match={isMatch}");
+#endif
+
+        // SIEMPRE actualizar conversación en lista (aunque el chat no esté abierto)
         if (_conversationsController != null)
         {
             _conversationsController.UpsertFromSignalR(message, isInbound: true);
             RefreshConversationsList();
         }
 
-        // Si esta conversación está abierta, añadir al chat
-        // Comparar con _selectedPhone normalizado también
-        var selectedPhoneNormalized = !string.IsNullOrWhiteSpace(_selectedPhone)
-            ? Helpers.PhoneNormalizer.Normalize(_selectedPhone)
-            : _selectedPhone;
-        if (string.IsNullOrEmpty(selectedPhoneNormalized))
-            selectedPhoneNormalized = _selectedPhone;
-
-        if (selectedPhoneNormalized == customerPhoneNormalized && _chatController != null)
+        // Solo añadir al chat si está abierto y coincide
+        if (isMatch && _chatController != null)
         {
             var msgVm = new MessageVm
             {
@@ -757,15 +772,15 @@ public partial class MainForm : Form
                 Text = message.Body,
                 From = message.Originator,
                 To = message.Recipient,
-                SentBy = message.SentBy // Mapear SentBy (será null para inbound)
+                SentBy = message.SentBy
             };
             _chatController.AddMessage(msgVm);
             RefreshChat();
 
-            // Marcar como leído solo si la ventana está enfocada
+            // Marcar como leído solo si la ventana está enfocada (fire-and-forget seguro)
             if (_isWindowFocused && _apiClient != null)
             {
-                _apiClient.MarkConversationReadAsync(customerPhoneNormalized).GetAwaiter();
+                _ = _apiClient.MarkConversationReadAsync(customerPhoneNormalized);
             }
         }
     }
@@ -778,41 +793,56 @@ public partial class MainForm : Form
             return;
         }
 
+        // Obtener customerPhone: outbound usa Recipient
         var customerPhone = !string.IsNullOrWhiteSpace(message.CustomerPhone) 
             ? message.CustomerPhone 
-            : message.Recipient; // Fallback para compatibilidad
+            : message.Recipient;
 
-        // Log de warning si CustomerPhone sigue vacío después del fix
         if (string.IsNullOrWhiteSpace(customerPhone))
         {
 #if DEBUG
             System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: CustomerPhone is empty for NewSentMessage. " +
                 $"Originator='{message.Originator}', Recipient='{message.Recipient}', Direction={message.Direction}");
 #endif
-            return; // No procesar si no hay customerPhone
+            return;
         }
 
-        // Normalizar customerPhone para comparación (puede venir con/sin '+')
+        // Normalizar SIEMPRE
         var customerPhoneNormalized = Helpers.PhoneNormalizer.Normalize(customerPhone);
         if (string.IsNullOrEmpty(customerPhoneNormalized))
-            customerPhoneNormalized = customerPhone; // Usar original si no se puede normalizar
+        {
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: Could not normalize customerPhone '{customerPhone}', using original");
+#endif
+            customerPhoneNormalized = customerPhone;
+        }
 
-        // Actualizar o crear conversación en lista (tiempo real)
+        // Normalizar _selectedPhone para comparación
+        var selectedPhoneNormalized = !string.IsNullOrWhiteSpace(_selectedPhone)
+            ? Helpers.PhoneNormalizer.Normalize(_selectedPhone)
+            : null;
+        if (string.IsNullOrEmpty(selectedPhoneNormalized) && !string.IsNullOrWhiteSpace(_selectedPhone))
+        {
+            selectedPhoneNormalized = _selectedPhone; // Fallback si no se puede normalizar
+        }
+
+        var isMatch = !string.IsNullOrWhiteSpace(selectedPhoneNormalized) && 
+                      selectedPhoneNormalized == customerPhoneNormalized;
+
+#if DEBUG
+        System.Diagnostics.Debug.WriteLine($"[MainForm] Outbound received. selected='{_selectedPhone}' (normalized='{selectedPhoneNormalized}'), " +
+            $"customer='{customerPhone}' (normalized='{customerPhoneNormalized}'), match={isMatch}");
+#endif
+
+        // SIEMPRE actualizar conversación en lista (aunque el chat no esté abierto)
         if (_conversationsController != null)
         {
             _conversationsController.UpsertFromSignalR(message, isInbound: false);
             RefreshConversationsList();
         }
 
-        // Si esta conversación está abierta, añadir al chat
-        // Comparar con _selectedPhone normalizado también
-        var selectedPhoneNormalized = !string.IsNullOrWhiteSpace(_selectedPhone)
-            ? Helpers.PhoneNormalizer.Normalize(_selectedPhone)
-            : _selectedPhone;
-        if (string.IsNullOrEmpty(selectedPhoneNormalized))
-            selectedPhoneNormalized = _selectedPhone;
-
-        if (selectedPhoneNormalized == customerPhoneNormalized && _chatController != null)
+        // Solo añadir al chat si está abierto y coincide
+        if (isMatch && _chatController != null)
         {
             var msgVm = new MessageVm
             {
@@ -822,7 +852,7 @@ public partial class MainForm : Form
                 Text = message.Body,
                 From = message.Originator,
                 To = message.Recipient,
-                SentBy = message.SentBy // Mapear SentBy desde SignalR
+                SentBy = message.SentBy
             };
             _chatController.AddMessage(msgVm);
             RefreshChat();
