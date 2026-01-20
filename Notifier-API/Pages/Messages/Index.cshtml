@@ -51,19 +51,23 @@
 
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card shadow-sm">
+        <div class="card filter-card">
             <div class="card-body">
                 <form method="get" class="row g-3">
-                    <div class="col-md-3">
-                        <label class="form-label">Dirección</label>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label fw-semibold">
+                            <i class="bi bi-arrow-left-right"></i> Dirección
+                        </label>
                         <select name="direction" class="form-select" asp-for="Direction">
                             <option value="inbound">Entrantes</option>
                             <option value="outbound">Enviados</option>
                         </select>
                     </div>
                     
-                    <div class="col-md-3">
-                        <label class="form-label">Mensajes por página</label>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label fw-semibold">
+                            <i class="bi bi-list-ul"></i> Mensajes por página
+                        </label>
                         <select name="pageSize" class="form-select" asp-for="PageSize">
                             <option value="10">10</option>
                             <option value="25">25</option>
@@ -72,15 +76,17 @@
                         </select>
                     </div>
                     
-                    <div class="col-md-4">
-                        <label class="form-label">Account Reference (opcional)</label>
+                    <div class="col-md-4 col-sm-12">
+                        <label class="form-label fw-semibold">
+                            <i class="bi bi-tag"></i> Account Reference (opcional)
+                        </label>
                         <input type="text" name="accountRef" class="form-control" placeholder="EX0375657" 
                                value="@Model.AccountRef" />
                     </div>
                     
-                    <div class="col-md-2 d-flex align-items-end">
+                    <div class="col-md-2 col-sm-12 d-flex align-items-end">
                         <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-search"></i> Buscar
+                            <i class="bi bi-search"></i> <span class="d-none d-sm-inline">Buscar</span>
                         </button>
                     </div>
                 </form>
@@ -118,133 +124,212 @@
             </div>
             
             <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                    <span>
-                        <i class="bi bi-list-ul"></i>
-                        <span id="messagesCountText">
+                <div class="card-header bg-primary text-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <i class="bi bi-list-ul fs-5"></i>
+                        <span id="messagesCountText" class="fw-semibold">
                             Mostrando @Model.Messages.Items.Count de @Model.Messages.Total mensajes
                             (@(Model.Direction == "inbound" ? "Entrantes" : "Enviados"))
                         </span>
-                        <span id="signalRStatus" class="badge bg-light text-dark ms-2" style="font-size: 0.7rem;">
+                        <span id="signalRStatus" class="badge bg-light text-dark" style="font-size: 0.75rem;">
                             <i class="bi bi-circle-fill" id="signalRStatusIcon"></i> <span id="signalRStatusText">Conectando...</span>
                         </span>
-                    </span>
-                    <div>
+                    </div>
+                    <div class="d-flex gap-2">
                         <button type="button" class="btn btn-light btn-sm" id="refreshMessagesBtn" onclick="refreshMessagesPartial()" title="Actualizar mensajes">
-                            <i class="bi bi-arrow-clockwise" id="refreshMessagesIcon"></i> Actualizar
+                            <i class="bi bi-arrow-clockwise" id="refreshMessagesIcon"></i> 
+                            <span class="d-none d-md-inline">Actualizar</span>
                         </button>
-                        <a asp-page="/Messages/Reply" class="btn btn-light btn-sm ms-2">
-                            <i class="bi bi-send-fill"></i> Enviar Mensaje
+                        <a asp-page="/Messages/Reply" class="btn btn-light btn-sm">
+                            <i class="bi bi-send-fill"></i> 
+                            <span class="d-none d-md-inline">Enviar Mensaje</span>
+                            <span class="d-md-none">Enviar</span>
                         </a>
                     </div>
                 </div>
                 <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover table-striped mb-0 table-sm">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="min-width: 100px; width: 10%;">De</th>
-                                    <th style="min-width: 100px; width: 10%;">Para</th>
-                                    <th style="min-width: 150px;">Mensaje</th>
-                                    <th style="min-width: 80px; width: 10%;">Fecha/Hora</th>
-                                    <th style="min-width: 80px; width: 10%;">Enviado por</th>
-                                    <th style="min-width: 100px; width: 12%;">ID</th>
-                                    <th class="text-center" style="min-width: 140px; width: 15%;">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody id="messagesTableBody">
-                                <!-- Spinner de carga (oculto inicialmente) -->
-                                <tr id="loadingRow" style="display: none;">
-                                    <td colspan="7" class="text-center py-4">
-                                        <div class="spinner-border text-primary" role="status">
-                                            <span class="visually-hidden">Cargando...</span>
-                                        </div>
-                                        <p class="mt-2 text-muted">Actualizando mensajes...</p>
-                                    </td>
-                                </tr>
-                                <!-- Fila de error (oculta inicialmente) -->
-                                <tr id="errorRow" style="display: none;">
-                                    <td colspan="7" class="text-center py-4">
-                                        <div class="alert alert-danger mb-0">
-                                            <i class="bi bi-exclamation-triangle-fill"></i>
-                                            <span id="errorMessageText">Error al cargar mensajes</span>
-                                            <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="refreshMessagesPartial()">
-                                                Reintentar
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                @foreach (var message in Model.Messages.Items)
-                                {
-                                    var messagePreview = message.Message?.Length > 80 ? message.Message.Substring(0, 80) + "..." : message.Message;
-                                    var isTruncated = message.Message?.Length > 80;
-                                    <tr data-message-id="@message.Id">
-                                        <td>
-                                            <span class="phone-number small" title="@message.From">
-                                                @message.From
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <span class="phone-number small" title="@message.To">
-                                                @message.To
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <div class="message-preview-container">
-                                                <span class="message-preview-text" data-full-text="@message.Message" data-id="@message.Id">
-                                                    @messagePreview
-                                                </span>
-                                                @if (isTruncated)
-                                                {
-                                                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-primary message-toggle-btn" 
-                                                            data-id="@message.Id" 
-                                                            onclick="toggleMessage(this)"
-                                                            title="Ver mensaje completo">
-                                                        <small>ver más</small>
-                                                    </button>
-                                                }
+                    <!-- Tabla Desktop/Tablet -->
+                    <div class="messages-table-wrapper">
+                        <div class="table-responsive">
+                            <table class="table messages-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 8%;">ID</th>
+                                        <th style="width: 12%;">Enviado por</th>
+                                        <th style="width: 12%;">De</th>
+                                        <th style="width: 12%;">Para</th>
+                                        <th style="width: 28%;">Mensaje</th>
+                                        <th style="width: 12%;">Fecha/Hora</th>
+                                        <th class="text-center" style="width: 16%;">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="messagesTableBody">
+                                    <!-- Spinner de carga (oculto inicialmente) -->
+                                    <tr id="loadingRow" style="display: none;">
+                                        <td colspan="7" class="text-center py-4">
+                                            <div class="spinner-border text-primary" role="status">
+                                                <span class="visually-hidden">Cargando...</span>
                                             </div>
-                                        </td>
-                                        <td>
-                                            <small class="text-muted" title="@message.ReceivedUtc.ToString("O")">
-                                                @(FormatDate(message.ReceivedUtc))
-                                            </small>
-                                        </td>
-                                        <td>
-                                            <small class="text-muted">
-                                                @(string.IsNullOrWhiteSpace(message.SentBy) ? "-" : message.SentBy)
-                                            </small>
-                                        </td>
-                                        <td>
-                                            <code class="text-muted small" style="font-size: 0.75rem; white-space: nowrap; word-break: break-all;" title="@message.Id">
-                                                @message.Id.ToString().Substring(Math.Max(0, message.Id.Length - 8))
-                                            </code>
-                                        </td>
-                                        <td class="text-center">
-                                            <button type="button" class="btn btn-sm btn-outline-info" 
-                                                    data-id="@message.Id" 
-                                                    onclick="viewFullMessage(this)"
-                                                    title="Ver mensaje completo">
-                                                <i class="bi bi-eye-fill"></i>
-                                            </button>
-                                            @{
-                                                var replyTo = Model.Direction == "inbound" ? message.From : message.To;
-                                                if (!string.IsNullOrWhiteSpace(replyTo) && !replyTo.StartsWith("+"))
-                                                {
-                                                    replyTo = "+" + replyTo;
-                                                }
-                                            }
-                                            <a asp-page="/Messages/Reply" 
-                                               asp-route-to="@replyTo" 
-                                               class="btn btn-sm btn-outline-primary ms-1"
-                                               title="Responder">
-                                                <i class="bi bi-reply-fill"></i>
-                                            </a>
+                                            <p class="mt-2 text-muted">Actualizando mensajes...</p>
                                         </td>
                                     </tr>
-                                }
-                            </tbody>
-                        </table>
+                                    <!-- Fila de error (oculta inicialmente) -->
+                                    <tr id="errorRow" style="display: none;">
+                                        <td colspan="7" class="text-center py-4">
+                                            <div class="alert alert-danger mb-0">
+                                                <i class="bi bi-exclamation-triangle-fill"></i>
+                                                <span id="errorMessageText">Error al cargar mensajes</span>
+                                                <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="refreshMessagesPartial()">
+                                                    Reintentar
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    @foreach (var message in Model.Messages.Items)
+                                    {
+                                        var messagePreview = message.Message?.Length > 80 ? message.Message.Substring(0, 80) + "..." : message.Message;
+                                        var isTruncated = message.Message?.Length > 80;
+                                        <tr data-message-id="@message.Id">
+                                            <td>
+                                                <code class="message-card-id" title="@message.Id">
+                                                    @message.Id.ToString().Substring(Math.Max(0, message.Id.Length - 8))
+                                                </code>
+                                            </td>
+                                            <td>
+                                                <small class="message-card-sentby">
+                                                    @(string.IsNullOrWhiteSpace(message.SentBy) ? "-" : message.SentBy)
+                                                </small>
+                                            </td>
+                                            <td>
+                                                <span class="phone-number" title="@message.From">
+                                                    @message.From
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="phone-number" title="@message.To">
+                                                    @message.To
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="message-preview-container">
+                                                    <span class="message-preview-text" data-full-text="@message.Message" data-id="@message.Id">
+                                                        @messagePreview
+                                                    </span>
+                                                    @if (isTruncated)
+                                                    {
+                                                        <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-primary message-toggle-btn" 
+                                                                data-id="@message.Id" 
+                                                                onclick="toggleMessage(this)"
+                                                                title="Ver mensaje completo">
+                                                            <small>ver más</small>
+                                                        </button>
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <small class="text-muted" title="@message.ReceivedUtc.ToString("O")">
+                                                    @(FormatDate(message.ReceivedUtc))
+                                                </small>
+                                            </td>
+                                            <td class="text-center">
+                                                <div class="btn-action-group">
+                                                    <button type="button" class="btn btn-outline-info btn-action" 
+                                                            data-id="@message.Id" 
+                                                            onclick="viewFullMessage(this)"
+                                                            title="Ver mensaje completo">
+                                                        <i class="bi bi-eye-fill"></i>
+                                                        <span class="btn-label">Ver</span>
+                                                    </button>
+                                                    @{
+                                                        var replyTo = Model.Direction == "inbound" ? message.From : message.To;
+                                                        if (!string.IsNullOrWhiteSpace(replyTo) && !replyTo.StartsWith("+"))
+                                                        {
+                                                            replyTo = "+" + replyTo;
+                                                        }
+                                                    }
+                                                    <a asp-page="/Messages/Reply" 
+                                                       asp-route-to="@replyTo" 
+                                                       class="btn btn-outline-primary btn-action"
+                                                       title="Responder">
+                                                        <i class="bi bi-reply-fill"></i>
+                                                        <span class="btn-label">Responder</span>
+                                                    </a>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Cards Móvil -->
+                    <div class="messages-cards-container" id="messagesCardsContainer">
+                        @foreach (var message in Model.Messages.Items)
+                        {
+                            var messagePreview = message.Message?.Length > 100 ? message.Message.Substring(0, 100) + "..." : message.Message;
+                            var isTruncated = message.Message?.Length > 100;
+                            var replyTo = Model.Direction == "inbound" ? message.From : message.To;
+                            if (!string.IsNullOrWhiteSpace(replyTo) && !replyTo.StartsWith("+"))
+                            {
+                                replyTo = "+" + replyTo;
+                            }
+                            <div class="message-card" data-message-id="@message.Id">
+                                <div class="message-card-header">
+                                    <div>
+                                        <span class="message-card-id">ID: @message.Id.ToString().Substring(Math.Max(0, message.Id.Length - 8))</span>
+                                    </div>
+                                    <div>
+                                        <span class="message-card-sentby">@(string.IsNullOrWhiteSpace(message.SentBy) ? "-" : message.SentBy)</span>
+                                    </div>
+                                </div>
+                                <div class="message-card-body">
+                                    <div class="message-card-phone">
+                                        <span class="message-card-phone-label">De:</span>
+                                        <span class="phone-number">@message.From</span>
+                                    </div>
+                                    <div class="message-card-phone">
+                                        <span class="message-card-phone-label">Para:</span>
+                                        <span class="phone-number">@message.To</span>
+                                    </div>
+                                    <div class="message-card-message">
+                                        <span class="message-preview-text" data-full-text="@message.Message" data-id="@message.Id">
+                                            @messagePreview
+                                        </span>
+                                        @if (isTruncated)
+                                        {
+                                            <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-primary message-toggle-btn" 
+                                                    data-id="@message.Id" 
+                                                    onclick="toggleMessage(this)"
+                                                    title="Ver mensaje completo">
+                                                <small>ver más</small>
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="message-card-footer">
+                                    <span class="message-card-date" title="@message.ReceivedUtc.ToString("O")">
+                                        @(FormatDate(message.ReceivedUtc))
+                                    </span>
+                                    <div class="message-card-actions">
+                                        <button type="button" class="btn btn-outline-info btn-action" 
+                                                data-id="@message.Id" 
+                                                onclick="viewFullMessage(this)"
+                                                title="Ver mensaje completo">
+                                            <i class="bi bi-eye-fill"></i>
+                                            <span class="btn-label">Ver</span>
+                                        </button>
+                                        <a asp-page="/Messages/Reply" 
+                                           asp-route-to="@replyTo" 
+                                           class="btn btn-outline-primary btn-action"
+                                           title="Responder">
+                                            <i class="bi bi-reply-fill"></i>
+                                            <span class="btn-label">Responder</span>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        }
                     </div>
                 </div>
                 <div class="card-footer">
@@ -411,38 +496,413 @@ else if (Model.Messages != null)
 }
 
 <style>
+    /* ============================================
+       VARIABLES CSS
+       ============================================ */
+    :root {
+        --spacing-xs: 0.25rem;
+        --spacing-sm: 0.5rem;
+        --spacing-md: 0.75rem;
+        --spacing-lg: 1rem;
+        --spacing-xl: 1.5rem;
+        
+        --font-size-xs: 0.75rem;
+        --font-size-sm: 0.875rem;
+        --font-size-base: 1rem;
+        --font-size-lg: 1.125rem;
+        
+        --border-radius: 0.5rem;
+        --border-radius-sm: 0.375rem;
+        
+        --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+        --shadow-md: 0 2px 4px rgba(0,0,0,0.1);
+        --shadow-lg: 0 4px 8px rgba(0,0,0,0.15);
+        
+        --transition-base: all 0.2s ease;
+        --transition-slow: all 0.3s ease;
+        
+        --color-primary: #0d6efd;
+        --color-success: #198754;
+        --color-info: #0dcaf0;
+        --color-warning: #ffc107;
+        --color-danger: #dc3545;
+    }
+
+    /* ============================================
+       ESTILOS BASE
+       ============================================ */
     .message-preview-container {
         word-break: break-word;
-        max-width: 300px;
+        max-width: 100%;
     }
+    
     .message-preview-text {
         display: inline;
+        font-size: var(--font-size-sm);
+        line-height: 1.5;
     }
+    
     .message-toggle-btn {
         text-decoration: none;
-        font-size: 0.85rem;
+        font-size: var(--font-size-sm);
+        padding: var(--spacing-xs);
+        border-radius: var(--border-radius-sm);
+        transition: var(--transition-base);
     }
+    
     .message-toggle-btn:hover {
         text-decoration: underline;
+        background-color: rgba(13, 110, 253, 0.1);
     }
-    .table-sm td {
-        padding: 0.5rem;
-        font-size: 0.875rem;
-    }
-    .table-sm th {
-        padding: 0.75rem 0.5rem;
-        font-size: 0.875rem;
-    }
+    
     .phone-number {
         word-break: break-all;
+        font-size: var(--font-size-sm);
+        line-height: 1.4;
     }
-    @@media (max-width: 768px) {
-        .table-responsive {
-            font-size: 0.8rem;
+
+    /* ============================================
+       TABLA DESKTOP (>992px)
+       ============================================ */
+    .messages-table-wrapper {
+        overflow-x: auto;
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow-sm);
+    }
+    
+    .messages-table {
+        margin-bottom: 0;
+        background-color: #fff;
+    }
+    
+    .messages-table thead {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-bottom: 2px solid #dee2e6;
+    }
+    
+    .messages-table thead th {
+        padding: var(--spacing-md) var(--spacing-sm);
+        font-size: var(--font-size-sm);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #495057;
+        border-bottom: 2px solid #dee2e6;
+        white-space: nowrap;
+    }
+    
+    .messages-table tbody td {
+        padding: var(--spacing-md) var(--spacing-sm);
+        font-size: var(--font-size-sm);
+        vertical-align: middle;
+        border-bottom: 1px solid #f0f0f0;
+        transition: var(--transition-base);
+    }
+    
+    .messages-table tbody tr {
+        transition: var(--transition-base);
+    }
+    
+    .messages-table tbody tr:hover {
+        background-color: #f8f9fa;
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-sm);
+    }
+    
+    .messages-table tbody tr.table-warning {
+        background-color: #fff3cd;
+        animation: highlightFade 3s ease-out;
+    }
+    
+    @@keyframes highlightFade {
+        0% { background-color: #fff3cd; }
+        100% { background-color: transparent; }
+    }
+    
+    .messages-table code {
+        font-size: var(--font-size-xs);
+        background-color: #f8f9fa;
+        padding: 0.2rem 0.4rem;
+        border-radius: var(--border-radius-sm);
+        color: #6c757d;
+    }
+    
+    .messages-table small {
+        font-size: var(--font-size-sm);
+        color: #6c757d;
+    }
+
+    /* ============================================
+       BOTONES PROFESIONALES
+       ============================================ */
+    .btn-action {
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: var(--font-size-sm);
+        line-height: 1.4;
+        min-width: 80px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.3rem;
+        border-radius: var(--border-radius-sm);
+        transition: var(--transition-base);
+        border: 1px solid;
+        font-weight: 500;
+    }
+    
+    .btn-action i {
+        font-size: 1.15rem;
+        display: block;
+        line-height: 1;
+    }
+    
+    .btn-action .btn-label {
+        font-size: 0.7rem;
+        line-height: 1.2;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+    
+    .btn-action:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-md);
+    }
+    
+    .btn-action:active {
+        transform: translateY(0);
+    }
+    
+    .btn-action-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--spacing-sm);
+    }
+
+    /* ============================================
+       CARDS MÓVIL (<768px)
+       ============================================ */
+    .message-card {
+        background: #fff;
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow-md);
+        padding: var(--spacing-lg);
+        margin-bottom: var(--spacing-md);
+        transition: var(--transition-base);
+        border-left: 4px solid var(--color-primary);
+    }
+    
+    .message-card:hover {
+        box-shadow: var(--shadow-lg);
+        transform: translateY(-2px);
+    }
+    
+    .message-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: var(--spacing-md);
+        padding-bottom: var(--spacing-sm);
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .message-card-id {
+        font-size: var(--font-size-xs);
+        color: #6c757d;
+        background-color: #f8f9fa;
+        padding: 0.2rem 0.5rem;
+        border-radius: var(--border-radius-sm);
+        font-weight: 600;
+    }
+    
+    .message-card-sentby {
+        font-size: var(--font-size-sm);
+        color: #495057;
+        font-weight: 500;
+    }
+    
+    .message-card-body {
+        margin-bottom: var(--spacing-md);
+    }
+    
+    .message-card-phone {
+        display: flex;
+        gap: var(--spacing-lg);
+        margin-bottom: var(--spacing-sm);
+        font-size: var(--font-size-sm);
+    }
+    
+    .message-card-phone-label {
+        font-weight: 600;
+        color: #6c757d;
+        min-width: 50px;
+    }
+    
+    .message-card-message {
+        font-size: var(--font-size-base);
+        line-height: 1.6;
+        color: #212529;
+        margin: var(--spacing-md) 0;
+        padding: var(--spacing-md);
+        background-color: #f8f9fa;
+        border-radius: var(--border-radius-sm);
+    }
+    
+    .message-card-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: var(--spacing-sm);
+        border-top: 1px solid #e9ecef;
+        margin-top: var(--spacing-md);
+    }
+    
+    .message-card-date {
+        font-size: var(--font-size-xs);
+        color: #6c757d;
+    }
+    
+    .message-card-actions {
+        display: flex;
+        gap: var(--spacing-sm);
+    }
+    
+    .message-card-actions .btn-action {
+        min-width: 70px;
+        padding: var(--spacing-sm);
+        flex-direction: row;
+        gap: var(--spacing-xs);
+    }
+    
+    .message-card-actions .btn-action i {
+        font-size: 1rem;
+    }
+    
+    .message-card-actions .btn-action .btn-label {
+        font-size: var(--font-size-xs);
+    }
+
+    /* ============================================
+       RESPONSIVE BREAKPOINTS
+       ============================================ */
+    
+    /* Desktop: Tabla completa */
+    @@media (min-width: 992px) {
+        .messages-table-wrapper {
+            display: block;
         }
-        .table-sm td, .table-sm th {
-            padding: 0.4rem 0.3rem;
+        
+        .messages-cards-container {
+            display: none;
         }
+        
+        .messages-table thead th {
+            padding: var(--spacing-md) var(--spacing-md);
+        }
+        
+        .messages-table tbody td {
+            padding: var(--spacing-md) var(--spacing-md);
+        }
+    }
+    
+    /* Tablet: Tabla adaptada (768px-991px) */
+    @@media (min-width: 768px) and (max-width: 991px) {
+        .messages-table-wrapper {
+            display: block;
+        }
+        
+        .messages-cards-container {
+            display: none;
+        }
+        
+        .messages-table thead th:nth-child(2),
+        .messages-table tbody td:nth-child(2) {
+            display: none; /* Ocultar "Enviado por" en tablet */
+        }
+        
+        .messages-table thead th,
+        .messages-table tbody td {
+            padding: var(--spacing-sm) var(--spacing-xs);
+            font-size: var(--font-size-xs);
+        }
+        
+        .btn-action {
+            min-width: 70px;
+            padding: var(--spacing-xs) var(--spacing-sm);
+        }
+        
+        .btn-action i {
+            font-size: 1rem;
+        }
+        
+        .btn-action .btn-label {
+            font-size: 0.65rem;
+        }
+    }
+    
+    /* Móvil: Cards (<768px) */
+    @@media (max-width: 767px) {
+        .messages-table-wrapper {
+            display: none;
+        }
+        
+        .messages-cards-container {
+            display: block;
+            padding: var(--spacing-md);
+        }
+        
+        .card-header {
+            flex-direction: column;
+            gap: var(--spacing-sm);
+        }
+        
+        .card-header > div {
+            width: 100%;
+            justify-content: space-between;
+        }
+        
+        .btn-action-group {
+            flex-direction: row;
+            justify-content: center;
+            width: 100%;
+        }
+        
+        .filter-card .card-body {
+            padding: var(--spacing-md);
+        }
+        
+        .filter-card .form-label {
+            font-size: var(--font-size-sm);
+        }
+    }
+
+    /* ============================================
+       MEJORAS VISUALES
+       ============================================ */
+    .badge-new {
+        background-color: var(--color-success);
+        color: white;
+        padding: 0.2rem 0.5rem;
+        border-radius: 1rem;
+        font-size: var(--font-size-xs);
+        font-weight: 600;
+        animation: pulse 2s infinite;
+    }
+    
+    @@keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+    }
+    
+    .filter-card {
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow-sm);
+        transition: var(--transition-base);
+    }
+    
+    .filter-card:hover {
+        box-shadow: var(--shadow-md);
     }
 </style>
 
@@ -500,7 +960,12 @@ else if (Model.Messages != null)
             });
         }
 
-        // Función para renderizar una fila de mensaje
+        // Detectar si estamos en móvil
+        function isMobile() {
+            return window.innerWidth < 768;
+        }
+
+        // Función para renderizar una fila de mensaje (Desktop/Tablet)
         function renderMessageRow(message) {
             const from = message.from || 'N/A';
             const to = message.to || 'N/A';
@@ -529,27 +994,37 @@ else if (Model.Messages != null)
             // Formatear ID para mostrar solo últimos caracteres
             const shortId = id.length > 8 ? id.substring(id.length - 8) : id;
             
-            // Botones
+            // Botones profesionales
             let actionButtons = `
-                <button type="button" class="btn btn-sm btn-outline-info" 
-                        data-id="${id}" 
-                        onclick="viewFullMessage(this)"
-                        title="Ver mensaje completo">
-                    <i class="bi bi-eye-fill"></i>
-                </button>
-                <a href="${replyUrl}" 
-                   class="btn btn-sm btn-outline-primary ms-1"
-                   title="Responder">
-                    <i class="bi bi-reply-fill"></i>
-                </a>`;
+                <div class="btn-action-group">
+                    <button type="button" class="btn btn-outline-info btn-action" 
+                            data-id="${id}" 
+                            onclick="viewFullMessage(this)"
+                            title="Ver mensaje completo">
+                        <i class="bi bi-eye-fill"></i>
+                        <span class="btn-label">Ver</span>
+                    </button>
+                    <a href="${replyUrl}" 
+                       class="btn btn-outline-primary btn-action"
+                       title="Responder">
+                        <i class="bi bi-reply-fill"></i>
+                        <span class="btn-label">Responder</span>
+                    </a>
+                </div>`;
             
             return `
                 <tr data-message-id="${id}" class="table-warning">
                     <td>
-                        <span class="phone-number small" title="${from}">${from}</span>
+                        <code class="message-card-id" title="${id}">${shortId}</code>
                     </td>
                     <td>
-                        <span class="phone-number small" title="${to}">${to}</span>
+                        <small class="message-card-sentby">${sentBy || '-'}</small>
+                    </td>
+                    <td>
+                        <span class="phone-number" title="${from}">${from}</span>
+                    </td>
+                    <td>
+                        <span class="phone-number" title="${to}">${to}</span>
                     </td>
                     <td>
                         <div class="message-preview-container">
@@ -560,16 +1035,84 @@ else if (Model.Messages != null)
                     <td>
                         <small class="text-muted" title="${receivedUtc}">${formatDate(receivedUtc)}</small>
                     </td>
-                    <td>
-                        <small class="text-muted">${sentBy || '-'}</small>
-                    </td>
-                    <td>
-                        <code class="text-muted small" style="font-size: 0.75rem; white-space: nowrap; word-break: break-all;" title="${id}">${shortId}</code>
-                    </td>
                     <td class="text-center">
                         ${actionButtons}
                     </td>
                 </tr>`;
+        }
+
+        // Función para renderizar un card de mensaje (Móvil)
+        function renderMessageCard(message) {
+            const from = message.from || 'N/A';
+            const to = message.to || 'N/A';
+            const messageText = message.message || '';
+            const id = message.id || '';
+            const receivedUtc = message.receivedUtc || new Date().toISOString();
+            const sentBy = message.sentBy || '';
+            
+            // Truncar mensaje si es muy largo
+            const maxLength = 100;
+            const isTruncated = messageText.length > maxLength;
+            const messagePreview = isTruncated ? messageText.substring(0, maxLength) + '...' : messageText;
+            const toggleButton = isTruncated ? 
+                `<button type="button" class="btn btn-link btn-sm p-0 ms-1 text-primary message-toggle-btn" 
+                         data-id="${id}" 
+                         onclick="toggleMessage(this)"
+                         title="Ver mensaje completo">
+                    <small>ver más</small>
+                 </button>` : '';
+            
+            // Construir URL de responder
+            const replyTo = (isInbound ? from : to);
+            const replyToNormalized = replyTo.startsWith('+') ? replyTo : '+' + replyTo;
+            const replyUrl = `/Messages/Reply?to=${encodeURIComponent(replyToNormalized)}`;
+            
+            // Formatear ID
+            const shortId = id.length > 8 ? id.substring(id.length - 8) : id;
+            
+            return `
+                <div class="message-card" data-message-id="${id}">
+                    <div class="message-card-header">
+                        <div>
+                            <span class="message-card-id">ID: ${shortId}</span>
+                        </div>
+                        <div>
+                            <span class="message-card-sentby">${sentBy || '-'}</span>
+                        </div>
+                    </div>
+                    <div class="message-card-body">
+                        <div class="message-card-phone">
+                            <span class="message-card-phone-label">De:</span>
+                            <span class="phone-number">${from}</span>
+                        </div>
+                        <div class="message-card-phone">
+                            <span class="message-card-phone-label">Para:</span>
+                            <span class="phone-number">${to}</span>
+                        </div>
+                        <div class="message-card-message">
+                            <span class="message-preview-text" data-full-text="${messageText.replace(/"/g, '&quot;')}" data-id="${id}">${messagePreview}</span>
+                            ${toggleButton}
+                        </div>
+                    </div>
+                    <div class="message-card-footer">
+                        <span class="message-card-date" title="${receivedUtc}">${formatDate(receivedUtc)}</span>
+                        <div class="message-card-actions">
+                            <button type="button" class="btn btn-outline-info btn-action" 
+                                    data-id="${id}" 
+                                    onclick="viewFullMessage(this)"
+                                    title="Ver mensaje completo">
+                                <i class="bi bi-eye-fill"></i>
+                                <span class="btn-label">Ver</span>
+                            </button>
+                            <a href="${replyUrl}" 
+                               class="btn btn-outline-primary btn-action"
+                               title="Responder">
+                                <i class="bi bi-reply-fill"></i>
+                                <span class="btn-label">Responder</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>`;
         }
 
         // Función para alternar entre mensaje completo y truncado
@@ -595,7 +1138,7 @@ else if (Model.Messages != null)
             }
         }
 
-        // Función para insertar un mensaje nuevo en la tabla
+        // Función para insertar un mensaje nuevo
         function insertNewMessage(message) {
             if (!message || !message.id) {
                 console.warn("Message missing required fields:", message);
@@ -628,31 +1171,57 @@ else if (Model.Messages != null)
                 return;
             }
 
-            // Insertar la fila al principio de la tabla
-            const tbody = document.getElementById('messagesTableBody');
-            if (!tbody) {
-                // Si no hay tabla, mostrar banner para que el usuario recargue
-                console.log("Table body not found, showing banner instead");
-                incrementNewMessagesCount();
-                return;
-            }
+            const isMobileView = isMobile();
+            
+            if (isMobileView) {
+                // Insertar card en móvil
+                const cardsContainer = document.getElementById('messagesCardsContainer');
+                if (!cardsContainer) {
+                    console.log("Cards container not found, showing banner instead");
+                    incrementNewMessagesCount();
+                    return;
+                }
+                
+                const newCard = renderMessageCard(message);
+                cardsContainer.insertAdjacentHTML('afterbegin', newCard);
+                
+                // Añadir animación de entrada
+                const card = cardsContainer.querySelector(`[data-message-id="${message.id}"]`);
+                if (card) {
+                    card.style.opacity = '0';
+                    card.style.transform = 'translateY(-10px)';
+                    setTimeout(() => {
+                        card.style.transition = 'all 0.3s ease';
+                        card.style.opacity = '1';
+                        card.style.transform = 'translateY(0)';
+                    }, 10);
+                }
+            } else {
+                // Insertar fila en desktop/tablet
+                const tbody = document.getElementById('messagesTableBody');
+                if (!tbody) {
+                    console.log("Table body not found, showing banner instead");
+                    incrementNewMessagesCount();
+                    return;
+                }
 
-            const newRow = renderMessageRow(message);
-            tbody.insertAdjacentHTML('afterbegin', newRow);
+                const newRow = renderMessageRow(message);
+                tbody.insertAdjacentHTML('afterbegin', newRow);
+                
+                // Remover clase de highlight después de 3 segundos
+                setTimeout(() => {
+                    const row = tbody.querySelector(`tr[data-message-id="${message.id}"]`);
+                    if (row) {
+                        row.classList.remove('table-warning');
+                    }
+                }, 3000);
+            }
             
             // Añadir al set de IDs vistos
             seenMessageIds.add(message.id);
             
             // Actualizar contadores visuales
             updateMessagesCount(currentCount + 1, currentTotal + 1);
-            
-            // Remover clase de highlight después de 3 segundos
-            setTimeout(() => {
-                const row = tbody.querySelector(`tr[data-message-id="${message.id}"]`);
-                if (row) {
-                    row.classList.remove('table-warning');
-                }
-            }, 3000);
             
             console.log("New message inserted:", message.id);
         }
@@ -743,10 +1312,18 @@ else if (Model.Messages != null)
 
                 const data = await response.json();
                 
-                // Limpiar tbody (excepto loading/error rows)
+                // Limpiar contenido (excepto loading/error rows)
                 dataRows.forEach(row => row.remove());
                 
-                // Renderizar nuevas filas - mapear formato de BD a formato esperado
+                const isMobileView = isMobile();
+                const cardsContainer = document.getElementById('messagesCardsContainer');
+                
+                // Limpiar cards también si existe
+                if (cardsContainer) {
+                    cardsContainer.innerHTML = '';
+                }
+                
+                // Renderizar mensajes - mapear formato de BD a formato esperado
                 if (data.items && data.items.length > 0) {
                     data.items.forEach(item => {
                         const message = {
@@ -757,8 +1334,17 @@ else if (Model.Messages != null)
                             receivedUtc: item.messageAt,
                             sentBy: item.sentBy || null
                         };
-                        const row = renderMessageRow(message);
-                        tbody.insertAdjacentHTML('beforeend', row);
+                        
+                        if (isMobileView && cardsContainer) {
+                            // Renderizar card
+                            const card = renderMessageCard(message);
+                            cardsContainer.insertAdjacentHTML('beforeend', card);
+                        } else {
+                            // Renderizar fila de tabla
+                            const row = renderMessageRow(message);
+                            tbody.insertAdjacentHTML('beforeend', row);
+                        }
+                        
                         // Añadir al set de IDs vistos
                         if (message.id) {
                             seenMessageIds.add(message.id.toString());
@@ -766,7 +1352,11 @@ else if (Model.Messages != null)
                     });
                 } else {
                     // Si no hay mensajes, mostrar mensaje
-                    tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="7" class="text-center py-4 text-muted">No hay mensajes para mostrar</td></tr>');
+                    if (isMobileView && cardsContainer) {
+                        cardsContainer.innerHTML = '<div class="alert alert-info text-center m-3">No hay mensajes para mostrar</div>';
+                    } else {
+                        tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="7" class="text-center py-4 text-muted">No hay mensajes para mostrar</td></tr>');
+                    }
                 }
 
                 // Actualizar contador
@@ -898,6 +1488,18 @@ else if (Model.Messages != null)
         connection.onclose(() => {
             console.log("SignalR connection closed");
             updateSignalRStatus('disconnected', 'Desconectado');
+        });
+
+        // Manejar cambios de tamaño de ventana para responsive
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                // Si cambiamos de móvil a desktop o viceversa, recargar
+                const wasMobile = window.innerWidth < 768;
+                // Solo recargar si realmente cambió el modo de visualización
+                // Esto se maneja automáticamente con CSS, pero podemos añadir lógica adicional si es necesario
+            }, 250);
         });
 
         async function viewFullMessage(btn) {
