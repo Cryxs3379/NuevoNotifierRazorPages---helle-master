@@ -9,11 +9,46 @@ namespace NotifierAPI.Controllers
     [Route("api/[controller]")]
     public class MissedCallsController : ControllerBase
     {
-        private readonly NotificationDbContext _context;
+        private static readonly TimeZoneInfo SpainTimeZone =
+            TimeZoneInfo.FindSystemTimeZoneById("Romance Standard Time");
 
-        public MissedCallsController(NotificationDbContext context)
+        private readonly NotificationDbContext _context;
+        private readonly ILogger<MissedCallsController> _logger;
+
+        public MissedCallsController(NotificationDbContext context, ILogger<MissedCallsController> logger)
         {
             _context = context;
+            _logger = logger;
+        }
+
+        private DateTime NormalizeUtc(DateTime date)
+        {
+            if (date.Kind == DateTimeKind.Unspecified)
+            {
+                _logger.LogInformation("IncomingCall.DateAndTime has Unspecified kind. Forcing to UTC. Value: {Date}", date);
+                return DateTime.SpecifyKind(date, DateTimeKind.Utc);
+            }
+
+            if (date.Kind == DateTimeKind.Local)
+            {
+                return date.ToUniversalTime();
+            }
+
+            return date;
+        }
+
+        private DateTime ToSpainTime(DateTime utcDate)
+        {
+            var utc = NormalizeUtc(utcDate);
+            return TimeZoneInfo.ConvertTimeFromUtc(utc, SpainTimeZone);
+        }
+
+        private (bool IsMissed, bool IsAnswered, string StatusText) GetStatusInfo(byte status)
+        {
+            var isMissed = status == 1;
+            var isAnswered = status == 0;
+            var statusText = isMissed ? "Perdida" : "Respondida";
+            return (isMissed, isAnswered, statusText);
         }
 
         /// <summary>
@@ -85,10 +120,27 @@ namespace NotifierAPI.Controllers
                     .Take(limit)
                     .ToListAsync();
 
+                var mappedCalls = calls.Select(call =>
+                {
+                    var statusInfo = GetStatusInfo(call.Status);
+                    return new
+                    {
+                        call.Id,
+                        DateAndTime = ToSpainTime(call.DateAndTime),
+                        call.PhoneNumber,
+                        call.Status,
+                        call.ClientCalledAgain,
+                        call.AnswerCall,
+                        IsMissed = statusInfo.IsMissed,
+                        IsAnswered = statusInfo.IsAnswered,
+                        StatusText = statusInfo.StatusText
+                    };
+                }).ToList();
+
                 return Ok(new { 
                     success = true, 
-                    count = calls.Count, 
-                    data = calls 
+                    count = mappedCalls.Count, 
+                    data = mappedCalls 
                 });
             }
             catch (Exception ex)
@@ -115,21 +167,30 @@ namespace NotifierAPI.Controllers
                 var calls = await _context.IncomingCalls
                     .OrderByDescending(call => call.DateAndTime)
                     .Take(limit)
-                    .Select(call => new
+                    .ToListAsync();
+
+                var spainNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, SpainTimeZone);
+
+                var payload = calls.Select(call =>
+                {
+                    var spainTime = ToSpainTime(call.DateAndTime);
+                    var statusInfo = GetStatusInfo(call.Status);
+                    return new
                     {
                         call.Id,
-                        call.DateAndTime,
+                        DateAndTime = spainTime,
                         call.PhoneNumber,
                         call.Status,
                         call.ClientCalledAgain,
                         call.AnswerCall,
-                        IsMissedCall = call.Status == 0 && call.AnswerCall == null,
-                        IsAnswered = call.Status != 0 || call.AnswerCall != null,
-                        TimeAgo = DateTime.Now - call.DateAndTime
-                    })
-                    .ToListAsync();
+                        IsMissedCall = statusInfo.IsMissed,
+                        IsAnswered = statusInfo.IsAnswered,
+                        StatusText = statusInfo.StatusText,
+                        TimeAgo = spainNow - spainTime
+                    };
+                }).ToList();
 
-                return Ok(calls);
+                return Ok(payload);
             }
             catch (Exception ex)
             {
@@ -147,18 +208,18 @@ namespace NotifierAPI.Controllers
             try
             {
                 var totalMissedCalls = await _context.IncomingCalls
-                    .CountAsync(call => call.Status == 0 && call.AnswerCall == null);
+                    .CountAsync(call => call.Status == 1);
 
                 var todayMissedCalls = await _context.IncomingCalls
-                    .CountAsync(call => call.Status == 0 && call.AnswerCall == null && 
+                    .CountAsync(call => call.Status == 1 &&
                                       call.DateAndTime.Date == DateTime.Today);
 
                 var thisWeekMissedCalls = await _context.IncomingCalls
-                    .CountAsync(call => call.Status == 0 && call.AnswerCall == null && 
+                    .CountAsync(call => call.Status == 1 &&
                                       call.DateAndTime >= DateTime.Today.AddDays(-7));
 
                 var lastMissedCall = await _context.IncomingCalls
-                    .Where(call => call.Status == 0 && call.AnswerCall == null)
+                    .Where(call => call.Status == 1)
                     .OrderByDescending(call => call.DateAndTime)
                     .FirstOrDefaultAsync();
 
@@ -170,7 +231,7 @@ namespace NotifierAPI.Controllers
                     LastMissedCall = lastMissedCall != null ? new
                     {
                         lastMissedCall.Id,
-                        lastMissedCall.DateAndTime,
+                        DateAndTime = ToSpainTime(lastMissedCall.DateAndTime),
                         lastMissedCall.PhoneNumber
                     } : null
                 });
@@ -179,6 +240,47 @@ namespace NotifierAPI.Controllers
             {
                 return StatusCode(500, new { message = "Error interno del servidor", error = ex.Message });
             }
+        }
+
+        /// <summary>
+        /// Diagnóstico de conversión de zona horaria para llamadas perdidas
+        /// </summary>
+        [HttpGet("diagnostics")]
+        public async Task<ActionResult<object>> Diagnostics()
+        {
+            var lastCalls = await _context.IncomingCalls
+                .OrderByDescending(call => call.DateAndTime)
+                .Take(20)
+                .ToListAsync();
+
+            var serverNow = DateTime.Now;
+            var utcNow = DateTime.UtcNow;
+            var serverOffset = TimeZoneInfo.Local.GetUtcOffset(utcNow);
+
+            var records = lastCalls.Select(call =>
+            {
+                var statusInfo = GetStatusInfo(call.Status);
+                return new
+                {
+                    call.Id,
+                    DateAndTime = ToSpainTime(call.DateAndTime),
+                    call.PhoneNumber,
+                    call.Status,
+                    call.ClientCalledAgain,
+                    call.AnswerCall,
+                    IsMissed = statusInfo.IsMissed,
+                    IsAnswered = statusInfo.IsAnswered,
+                    StatusText = statusInfo.StatusText
+                };
+            }).ToList();
+
+            return Ok(new
+            {
+                ServerNow = serverNow,
+                UtcNow = utcNow,
+                ServerOffset = serverOffset.ToString(),
+                Records = records
+            });
         }
     }
 }

@@ -8,6 +8,9 @@ public class MissedCallDto
     public byte Status { get; set; }
     public long? ClientCalledAgain { get; set; }
     public long? AnswerCall { get; set; }
+    public bool? IsMissed { get; set; }
+    public bool? IsAnswered { get; set; }
+    public string? StatusText { get; set; }
 }
 
 public class MissedCallsResponse
