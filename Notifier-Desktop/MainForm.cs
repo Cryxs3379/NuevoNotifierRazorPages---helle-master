@@ -67,32 +67,49 @@ public partial class MainForm : Form
         
         Theme.EnableDoubleBuffer(this);
 
-        // Barra superior con estados
+        // Barra superior con estados - mejorada con FlowLayoutPanel
         var statusPanel = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 36,
+            Height = 40,
             BackColor = Theme.Surface,
             Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8)
         };
         Theme.EnableDoubleBuffer(statusPanel);
 
+        var statusFlow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(0)
+        };
+        Theme.EnableDoubleBuffer(statusFlow);
+
         _lblApiStatus = new Label
         {
             Text = "API: Desconectado",
-            ForeColor = Theme.Danger,
+            ForeColor = Color.White,
+            BackColor = Theme.Danger,
             Font = Theme.Small,
-            Location = new Point(Theme.Spacing12, 10),
-            AutoSize = true
+            AutoSize = true,
+            Padding = new Padding(Theme.Spacing8, Theme.Spacing4, Theme.Spacing8, Theme.Spacing4),
+            Margin = new Padding(0, 0, Theme.Spacing8, 0),
+            TextAlign = ContentAlignment.MiddleCenter
         };
 
         _lblSignalRStatus = new Label
         {
             Text = "SignalR: Desconectado",
-            ForeColor = Theme.Danger,
+            ForeColor = Color.White,
+            BackColor = Theme.Danger,
             Font = Theme.Small,
-            Location = new Point(150, 10),
-            AutoSize = true
+            AutoSize = true,
+            Padding = new Padding(Theme.Spacing8, Theme.Spacing4, Theme.Spacing8, Theme.Spacing4),
+            Margin = new Padding(0, 0, Theme.Spacing8, 0),
+            TextAlign = ContentAlignment.MiddleCenter
         };
 
         _lblError = new Label
@@ -100,39 +117,93 @@ public partial class MainForm : Form
             Text = "",
             ForeColor = Theme.Danger,
             Font = Theme.Small,
-            Location = new Point(350, 10),
-            AutoSize = true
+            AutoSize = true,
+            Margin = new Padding(Theme.Spacing8, 0, 0, 0),
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
-        statusPanel.Controls.AddRange(new Control[] { _lblApiStatus, _lblSignalRStatus, _lblError });
+        statusFlow.Controls.Add(_lblApiStatus);
+        statusFlow.Controls.Add(_lblSignalRStatus);
+        statusFlow.Controls.Add(_lblError);
+        statusPanel.Controls.Add(statusFlow);
 
-        // TabControl para Conversaciones y Llamadas Perdidas
+        // TabControl para Conversaciones y Llamadas Perdidas - estilo moderno
         _tabControl = new TabControl
         {
             Dock = DockStyle.Fill,
             Appearance = TabAppearance.FlatButtons,
-            Font = Theme.Body
+            Font = Theme.Body,
+            BackColor = Theme.Background,
+            Padding = new Point(Theme.Spacing8, Theme.Spacing4)
         };
         Theme.EnableDoubleBuffer(_tabControl);
+        
+        // Estilo de tabs más moderno
+        _tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
+        _tabControl.DrawItem += (s, e) =>
+        {
+            var tabPage = _tabControl.TabPages[e.Index];
+            var tabRect = _tabControl.GetTabRect(e.Index);
+            var isSelected = _tabControl.SelectedIndex == e.Index;
+            
+            e.Graphics.FillRectangle(new SolidBrush(isSelected ? Theme.Background : Theme.Surface), tabRect);
+            TextRenderer.DrawText(e.Graphics, tabPage.Text, Theme.Body, tabRect, 
+                isSelected ? Theme.TextPrimary : Theme.TextSecondary, 
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        };
 
         // Tab: Conversaciones
         _tabConversations = new TabPage("Conversaciones");
-        var conversationsPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Theme.Spacing8) };
+        var conversationsPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0) };
         conversationsPanel.BackColor = Theme.Background;
         Theme.EnableDoubleBuffer(conversationsPanel);
+        
+        // Header para conversaciones
+        var conversationsHeader = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 50,
+            BackColor = Theme.Surface,
+            Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8)
+        };
+        Theme.EnableDoubleBuffer(conversationsHeader);
+        
+        var lblConversationsTitle = new Label
+        {
+            Text = "CONVERSACIONES (SMS)",
+            Font = Theme.Title,
+            ForeColor = Theme.TextPrimary,
+            Location = new Point(Theme.Spacing12, Theme.Spacing8),
+            AutoSize = true
+        };
+        
+        var lblPendingCount = new Label
+        {
+            Text = "Pendientes: 0",
+            Font = Theme.Body,
+            ForeColor = Theme.TextSecondary,
+            Location = new Point(Theme.Spacing12, 28),
+            AutoSize = true,
+            Name = "lblPendingCount" // Para poder encontrarlo después
+        };
+        
+        conversationsHeader.Controls.Add(lblConversationsTitle);
+        conversationsHeader.Controls.Add(lblPendingCount);
         
         _txtSearch = new TextBox
         {
             Dock = DockStyle.Top,
-            Height = 36,
+            Height = 38,
             Text = "Buscar por teléfono...",
             Font = Theme.Body,
             BorderStyle = BorderStyle.FixedSingle,
-            BackColor = Theme.Surface
+            BackColor = Theme.Surface,
+            ForeColor = Theme.TextSecondary,
+            Padding = new Padding(Theme.Spacing8, Theme.Spacing8, Theme.Spacing8, Theme.Spacing8),
+            Margin = new Padding(Theme.Spacing8, Theme.Spacing8, Theme.Spacing8, 0)
         };
         _txtSearch.GotFocus += (s, e) => { if (_txtSearch.Text == "Buscar por teléfono...") { _txtSearch.Clear(); _txtSearch.ForeColor = Theme.TextPrimary; } };
         _txtSearch.LostFocus += (s, e) => { if (string.IsNullOrWhiteSpace(_txtSearch.Text)) { _txtSearch.Text = "Buscar por teléfono..."; _txtSearch.ForeColor = Theme.TextSecondary; } };
-        _txtSearch.ForeColor = Theme.TextSecondary;
         _txtSearch.TextChanged += async (s, e) => await SearchConversationsAsync();
         
         _flowReceived = new FlowLayoutPanel
@@ -150,6 +221,7 @@ public partial class MainForm : Form
         
         conversationsPanel.Controls.Add(_flowReceived);
         conversationsPanel.Controls.Add(_txtSearch);
+        conversationsPanel.Controls.Add(conversationsHeader);
         _tabConversations.Controls.Add(conversationsPanel);
 
         // Tab: Llamadas Perdidas
@@ -199,8 +271,12 @@ public partial class MainForm : Form
         // Ajustar posición del label cuando cambie el tamaño del header
         missedCallsHeader.Resize += (s, e) =>
         {
-            _lblMissedCallsLastUpdate.Location = new Point(missedCallsHeader.Width - 250, Theme.Spacing8);
+            if (missedCallsHeader.IsHandleCreated && missedCallsHeader.Width > 0)
+            {
+                _lblMissedCallsLastUpdate.Location = new Point(missedCallsHeader.Width - 250, Theme.Spacing8);
+            }
         };
+        
 
         missedCallsHeader.Controls.Add(_lblMissedCallsTitle);
         missedCallsHeader.Controls.Add(_lblMissedCallsCount);
@@ -248,8 +324,10 @@ public partial class MainForm : Form
         _dgvMissedCalls.DefaultCellStyle.ForeColor = Theme.TextPrimary;
         _dgvMissedCalls.DefaultCellStyle.Font = Theme.Body;
         _dgvMissedCalls.DefaultCellStyle.Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8);
-        _dgvMissedCalls.DefaultCellStyle.SelectionBackColor = Theme.AccentBlue;
-        _dgvMissedCalls.DefaultCellStyle.SelectionForeColor = Color.White;
+        // Selección más suave (AccentBlue pero menos saturado)
+        var softBlue = Color.FromArgb(220, 230, 255);
+        _dgvMissedCalls.DefaultCellStyle.SelectionBackColor = softBlue;
+        _dgvMissedCalls.DefaultCellStyle.SelectionForeColor = Theme.TextPrimary;
         _dgvMissedCalls.DefaultCellStyle.WrapMode = DataGridViewTriState.False;
 
         // Configurar columnas manualmente
@@ -262,29 +340,30 @@ public partial class MainForm : Form
         _tabControl.TabPages.Add(_tabConversations);
         _tabControl.TabPages.Add(_tabMissedCalls);
 
-        // SplitContainer principal (fixed width, no resizable)
+        // SplitContainer principal (fixed width, no resizable) - mejorado
         _splitContainer = new SplitContainer
         {
             Dock = DockStyle.Fill,
             FixedPanel = FixedPanel.Panel1,
             IsSplitterFixed = true,
-            SplitterWidth = 1,
-            Panel1MinSize = 400
+            SplitterWidth = 2,
+            Panel1MinSize = 420,
+            BackColor = Theme.Border
         };
         
         // Set splitter distance and panel2 minsize after form has size
         Load += (s, e) =>
         {
             _splitContainer.Panel2MinSize = 600;
-            _splitContainer.SplitterDistance = 400;
+            _splitContainer.SplitterDistance = 420;
         };
         
         _splitContainer.SplitterMoved += (s, e) =>
         {
             // Prevent splitter movement by resetting distance
-            if (_splitContainer.SplitterDistance != 400)
+            if (_splitContainer.SplitterDistance != 420)
             {
-                _splitContainer.SplitterDistance = 400;
+                _splitContainer.SplitterDistance = 420;
             }
         };
 
@@ -294,11 +373,11 @@ public partial class MainForm : Form
         // Panel derecho: Chat
         var chatPanel = new Panel { Dock = DockStyle.Fill };
 
-        // Header del chat
+        // Header del chat - más limpio
         _chatHeader = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 64,
+            Height = 70,
             BackColor = Theme.Surface,
             Padding = new Padding(Theme.Spacing16, Theme.Spacing12, Theme.Spacing16, Theme.Spacing12)
         };
@@ -318,14 +397,14 @@ public partial class MainForm : Form
             Text = "",
             Font = Theme.Small,
             ForeColor = Theme.Success,
-            Location = new Point(Theme.Spacing16, 36),
+            Location = new Point(Theme.Spacing16, 38),
             AutoSize = true
         };
 
         _chatHeader.Controls.Add(_lblChatPhone);
         _chatHeader.Controls.Add(_lblAssignedTo);
 
-        // Panel de chat con scroll
+        // Panel de chat con scroll - mejor spacing
         _flowChat = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -333,17 +412,17 @@ public partial class MainForm : Form
             WrapContents = false,
             AutoScroll = true,
             BackColor = Theme.Background,
-            Padding = new Padding(Theme.Spacing12)
+            Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8)
         };
         Theme.EnableDoubleBuffer(_flowChat);
 
-        // Panel composer
+        // Panel composer - más cómodo
         var composerPanel = new Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 80,
+            Height = 90,
             BackColor = Theme.Surface,
-            Padding = new Padding(Theme.Spacing12)
+            Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8)
         };
         Theme.EnableDoubleBuffer(composerPanel);
 
@@ -357,7 +436,8 @@ public partial class MainForm : Form
             BorderStyle = BorderStyle.FixedSingle,
             BackColor = Theme.Surface,
             ForeColor = Theme.TextPrimary,
-            Margin = new Padding(0, 0, Theme.Spacing8, 0)
+            Margin = new Padding(0, 0, Theme.Spacing8, 0),
+            Padding = new Padding(Theme.Spacing8)
         };
         _txtMessage.KeyDown += TxtMessage_KeyDown;
 
@@ -1208,8 +1288,8 @@ public partial class MainForm : Form
         _lblMissedCallsCount.Text = $"Total: {calls.Count}";
         _lblMissedCallsCount.ForeColor = Theme.TextSecondary;
         
-        // Actualizar última actualización
-        _lblMissedCallsLastUpdate.Text = $"Actualizado: {DateTime.Now:HH:mm:ss}";
+        // Actualizar última actualización con icono
+        _lblMissedCallsLastUpdate.Text = $"● Actualizado: {DateTime.Now:HH:mm:ss}";
 
         // Actualizar BindingSource
         _missedCallsBindingSource.DataSource = calls;
@@ -1237,13 +1317,18 @@ public partial class MainForm : Form
     {
         if (InvokeRequired)
         {
-            Invoke(new Action(() => _lblSignalRStatus.Text = "SignalR: Reconectando..."));
-            Invoke(new Action(() => _lblSignalRStatus.ForeColor = Color.Orange));
+            Invoke(new Action(() => 
+            {
+                _lblSignalRStatus.Text = "SignalR: Reconectando...";
+                _lblSignalRStatus.BackColor = Color.Orange;
+                _lblSignalRStatus.ForeColor = Color.White;
+            }));
         }
         else
         {
             _lblSignalRStatus.Text = "SignalR: Reconectando...";
-            _lblSignalRStatus.ForeColor = Color.Orange;
+            _lblSignalRStatus.BackColor = Color.Orange;
+            _lblSignalRStatus.ForeColor = Color.White;
         }
     }
 
@@ -1256,7 +1341,8 @@ public partial class MainForm : Form
         }
 
         _lblApiStatus.Text = connected ? "API: Conectado" : "API: Desconectado";
-        _lblApiStatus.ForeColor = connected ? Theme.Success : Theme.Danger;
+        _lblApiStatus.BackColor = connected ? Theme.Success : Theme.Danger;
+        _lblApiStatus.ForeColor = Color.White;
     }
 
     private void UpdateSignalRStatus(bool connected)
@@ -1268,7 +1354,8 @@ public partial class MainForm : Form
         }
 
         _lblSignalRStatus.Text = connected ? "SignalR: Conectado" : "SignalR: Desconectado";
-        _lblSignalRStatus.ForeColor = connected ? Theme.Success : Theme.Danger;
+        _lblSignalRStatus.BackColor = connected ? Theme.Success : Theme.Danger;
+        _lblSignalRStatus.ForeColor = Color.White;
     }
 
     private void ShowError(string error)
