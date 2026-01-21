@@ -104,16 +104,29 @@ namespace NotifierAPI.Services
                 return;
             }
 
-            // Actualizar lastSeenId
+            // Actualizar lastSeenId (siempre avanzamos, incluso si no hay perdidas)
             var maxId = newCalls.Max(c => c.Id);
-            var newCount = newCalls.Count;
-            var latestAtUtc = newCalls.Max(c => c.DateAndTime);
 
-            _logger.LogInformation("Detectadas {Count} nuevas llamadas. MaxId: {MaxId}, LatestAt: {LatestAt}",
-                newCount, maxId, latestAtUtc);
+            // Filtrar solo llamadas perdidas (Status == 1)
+            var missedCalls = newCalls.Where(c => c.Status == 1).ToList();
 
-            // Notificar a Notifier-API
-            await NotifyNotifierApiAsync(newCount, maxId, latestAtUtc, ct);
+            if (missedCalls.Count == 0)
+            {
+                // No hay llamadas perdidas, solo actualizar lastSeenId sin notificar
+                _lastSeenId = maxId;
+                return;
+            }
+
+            // Hay llamadas perdidas: notificar
+            var newCountMissed = missedCalls.Count;
+            var maxIdMissed = missedCalls.Max(c => c.Id);
+            var latestAtUtcMissed = missedCalls.Max(c => c.DateAndTime);
+
+            _logger.LogInformation("Detectadas {Count} nuevas llamadas perdidas (de {Total} nuevas). MaxIdMissed: {MaxIdMissed}, LatestAt: {LatestAt}",
+                newCountMissed, newCalls.Count, maxIdMissed, latestAtUtcMissed);
+
+            // Notificar a Notifier-API solo con datos de llamadas perdidas
+            await NotifyNotifierApiAsync(newCountMissed, maxIdMissed, latestAtUtcMissed, ct);
 
             // Actualizar lastSeenId después de notificar exitosamente
             _lastSeenId = maxId;
@@ -142,9 +155,9 @@ namespace NotifierAPI.Services
 
                 var payload = new
                 {
-                    newCount = newCount,
-                    maxId = maxId,
-                    latestAtUtc = latestAtUtc.ToString("O")
+                    newCountMissed = newCount,
+                    maxIdMissed = maxId,
+                    latestAtUtcMissed = latestAtUtc.ToString("O")
                 };
 
                 var json = JsonSerializer.Serialize(payload);

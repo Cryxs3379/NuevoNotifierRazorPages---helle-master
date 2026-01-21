@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NotifierAPI.Models;
 using NotifierAPI.Services;
@@ -702,6 +703,54 @@ public static class WebApplicationExtensions
         .WithName("GetMissedCallsStats")
         .WithTags("Calls");
 
+        // Endpoint proxy para Desktop: obtener llamadas perdidas desde la vista
+        app.MapGet("/api/v1/calls/missed/view", async (
+            int? limit,
+            IHttpClientFactory httpClientFactory,
+            IConfiguration configuration,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                var missedCallsBaseUrl = configuration["MissedCallsAPI:BaseUrl"] ?? "http://localhost:5001";
+                var httpClient = httpClientFactory.CreateClient();
+                httpClient.BaseAddress = new Uri(missedCallsBaseUrl);
+                httpClient.Timeout = TimeSpan.FromSeconds(10);
+
+                var lmt = limit ?? 200;
+                if (lmt < 1) lmt = 200;
+                if (lmt > 500) lmt = 500;
+
+                var response = await httpClient.GetAsync($"/api/MissedCalls/view?limit={lmt}", ct);
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    app.Logger.LogWarning("Error al obtener llamadas desde Notifier-APiCalls. Status: {Status}", response.StatusCode);
+                    return Results.Problem(statusCode: 502, title: "No se pudieron obtener las llamadas perdidas desde la API");
+                }
+
+                var calls = await response.Content.ReadFromJsonAsync<List<object>>(ct);
+                return Results.Ok(new { items = calls ?? new List<object>() });
+            }
+            catch (HttpRequestException ex)
+            {
+                app.Logger.LogError(ex, "Error de red al obtener llamadas desde Notifier-APiCalls");
+                return Results.Problem(statusCode: 502, title: "Error de conexión con la API de llamadas");
+            }
+            catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+            {
+                app.Logger.LogWarning("Timeout al obtener llamadas desde Notifier-APiCalls");
+                return Results.Problem(statusCode: 504, title: "Timeout al obtener las llamadas perdidas");
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogError(ex, "Error inesperado al obtener llamadas desde la vista");
+                return Results.Problem(statusCode: 500, title: "Error al obtener las llamadas perdidas");
+            }
+        })
+        .WithName("GetMissedCallsFromView")
+        .WithTags("Calls");
+
         // Internal endpoint: Notify new calls (from Notifier-APiCalls)
         app.MapPost("/api/v1/internal/calls/notify", async (
             HttpRequest request,
@@ -731,15 +780,28 @@ public static class WebApplicationExtensions
                     return Results.BadRequest(new { error = "Payload inválido" });
                 }
 
-                app.Logger.LogInformation("Notificación de nuevas llamadas recibida. NewCount: {NewCount}, MaxId: {MaxId}",
-                    payload.NewCount, payload.MaxId);
+                // Log con campos compatibles (puede venir newCount o newCountMissed)
+                var newCount = payload.NewCountMissed ?? payload.NewCount ?? 0;
+                var maxId = payload.MaxIdMissed ?? payload.MaxId ?? 0;
+                var latestAtUtc = payload.LatestAtUtcMissed ?? payload.LatestAtUtc ?? string.Empty;
 
-                // Emitir SignalR
+                app.Logger.LogInformation("Notificación de nuevas llamadas recibida. NewCountMissed: {NewCountMissed}, MaxIdMissed: {MaxIdMissed}",
+                    newCount, maxId);
+
+                // Emitir SignalR para CallsUpdated (compatibilidad con Razor Pages)
                 await hubContext.Clients.All.SendAsync("CallsUpdated", new
                 {
-                    newCount = payload.NewCount,
-                    maxId = payload.MaxId,
-                    latestAtUtc = payload.LatestAtUtc
+                    newCount = newCount,
+                    maxId = maxId,
+                    latestAtUtc = latestAtUtc
+                }, ct);
+
+                // Emitir SignalR para MissedCallsUpdated (Desktop)
+                await hubContext.Clients.All.SendAsync("MissedCallsUpdated", new
+                {
+                    newCountMissed = newCount,
+                    maxIdMissed = maxId,
+                    latestAtUtcMissed = latestAtUtc
                 }, ct);
 
                 return Results.Ok(new { success = true, message = "Notificación enviada" });
@@ -780,7 +842,13 @@ public static class WebApplicationExtensions
 /// </summary>
 internal class CallsNotifyPayload
 {
-    public int NewCount { get; set; }
-    public long MaxId { get; set; }
-    public string LatestAtUtc { get; set; } = string.Empty;
+    // Campos legacy (compatibilidad)
+    public int? NewCount { get; set; }
+    public long? MaxId { get; set; }
+    public string? LatestAtUtc { get; set; }
+
+    // Campos nuevos (solo llamadas perdidas)
+    public int? NewCountMissed { get; set; }
+    public long? MaxIdMissed { get; set; }
+    public string? LatestAtUtcMissed { get; set; }
 }

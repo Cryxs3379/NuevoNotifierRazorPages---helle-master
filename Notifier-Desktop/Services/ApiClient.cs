@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using NotifierDesktop.Models;
+using NotifierDesktop.ViewModels;
 
 namespace NotifierDesktop.Services;
 
@@ -247,6 +249,47 @@ public class ApiClient
             System.Diagnostics.Debug.WriteLine($"[ApiClient] Error in ClaimConversationAsync: {ex.Message}");
 #endif
             // Retornar null en caso de error
+        }
+        return null;
+    }
+
+    public async Task<List<MissedCallVm>?> GetMissedCallsFromViewAsync(int limit = 200, CancellationToken ct = default)
+    {
+        try
+        {
+            var lmt = limit > 0 ? limit : 200;
+            if (lmt > 500) lmt = 500;
+
+            var response = await _httpClient.GetAsync($"/api/v1/calls/missed/view?limit={lmt}", ct);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync(ct);
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                
+                // El endpoint devuelve { items: [...] }
+                var wrapper = JsonSerializer.Deserialize<JsonElement>(json, options);
+                if (wrapper.TryGetProperty("items", out var itemsElement))
+                {
+                    var calls = JsonSerializer.Deserialize<List<MissedCallVm>>(itemsElement.GetRawText(), options);
+#if DEBUG
+                    System.Diagnostics.Debug.WriteLine($"[ApiClient] GetMissedCallsFromViewAsync: Retrieved {calls?.Count ?? 0} missed calls");
+#endif
+                    return calls;
+                }
+            }
+#if DEBUG
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[ApiClient] GetMissedCallsFromViewAsync failed with status: {response.StatusCode}");
+            }
+#endif
+        }
+        catch (Exception ex)
+        {
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[ApiClient] Error in GetMissedCallsFromViewAsync: {ex.Message}");
+#endif
         }
         return null;
     }

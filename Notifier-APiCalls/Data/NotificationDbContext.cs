@@ -10,6 +10,7 @@ namespace NotifierAPI.Data
         }
 
         public DbSet<IncomingCall> IncomingCalls { get; set; }
+        public DbSet<MissedCallWithClientNameRow> MissedCallsWithClientName { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -19,6 +20,15 @@ namespace NotifierAPI.Data
             {
                 entity.ToTable("IncomingCall", "dbo");
                 entity.HasKey(e => e.Id);
+                entity.Property(e => e.DateAndTime).HasColumnType("datetime2");
+                entity.Property(e => e.PhoneNumber).HasMaxLength(50);
+            });
+
+            // Vista keyless para vw_MissedCalls_WithClientName
+            modelBuilder.Entity<MissedCallWithClientNameRow>(entity =>
+            {
+                entity.HasNoKey();
+                entity.ToView("vw_MissedCalls_WithClientName", "dbo");
                 entity.Property(e => e.DateAndTime).HasColumnType("datetime2");
                 entity.Property(e => e.PhoneNumber).HasMaxLength(50);
             });

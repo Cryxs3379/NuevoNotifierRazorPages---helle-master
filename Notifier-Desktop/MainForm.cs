@@ -29,6 +29,15 @@ public partial class MainForm : Form
     private Label _lblApiStatus;
     private Label _lblSignalRStatus;
     private Label _lblError;
+    
+    // Panel de Llamadas Perdidas
+    private TabControl _tabControl;
+    private TabPage _tabConversations;
+    private TabPage _tabMissedCalls;
+    private FlowLayoutPanel _flowMissedCalls;
+    private Label _lblMissedCallsCount;
+    private Label _lblMissedCallsLastUpdate;
+    private List<MissedCallVm> _missedCalls = new();
 
     private string? _selectedPhone;
     private bool _isWindowFocused = true;
@@ -93,7 +102,17 @@ public partial class MainForm : Form
 
         statusPanel.Controls.AddRange(new Control[] { _lblApiStatus, _lblSignalRStatus, _lblError });
 
-        // Panel izquierdo: Lista de conversaciones
+        // TabControl para Conversaciones y Llamadas Perdidas
+        _tabControl = new TabControl
+        {
+            Dock = DockStyle.Fill,
+            Appearance = TabAppearance.FlatButtons,
+            Font = Theme.Body
+        };
+        Theme.EnableDoubleBuffer(_tabControl);
+
+        // Tab: Conversaciones
+        _tabConversations = new TabPage("Conversaciones");
         var conversationsPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Theme.Spacing8) };
         conversationsPanel.BackColor = Theme.Background;
         Theme.EnableDoubleBuffer(conversationsPanel);
@@ -127,6 +146,61 @@ public partial class MainForm : Form
         
         conversationsPanel.Controls.Add(_flowReceived);
         conversationsPanel.Controls.Add(_txtSearch);
+        _tabConversations.Controls.Add(conversationsPanel);
+
+        // Tab: Llamadas Perdidas
+        _tabMissedCalls = new TabPage("Llamadas Perdidas");
+        var missedCallsPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Theme.Spacing8) };
+        missedCallsPanel.BackColor = Theme.Background;
+        Theme.EnableDoubleBuffer(missedCallsPanel);
+
+        // Header con contador y última actualización
+        var missedCallsHeader = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 50,
+            BackColor = Theme.Surface,
+            Padding = new Padding(Theme.Spacing8)
+        };
+        Theme.EnableDoubleBuffer(missedCallsHeader);
+
+        _lblMissedCallsCount = new Label
+        {
+            Text = "Cargando...",
+            Font = Theme.BodyBold,
+            ForeColor = Theme.TextPrimary,
+            Location = new Point(Theme.Spacing8, Theme.Spacing8),
+            AutoSize = true
+        };
+
+        _lblMissedCallsLastUpdate = new Label
+        {
+            Text = "",
+            Font = Theme.Small,
+            ForeColor = Theme.TextSecondary,
+            Location = new Point(Theme.Spacing8, 28),
+            AutoSize = true
+        };
+
+        missedCallsHeader.Controls.Add(_lblMissedCallsCount);
+        missedCallsHeader.Controls.Add(_lblMissedCallsLastUpdate);
+
+        _flowMissedCalls = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = true,
+            BackColor = Theme.Background
+        };
+        Theme.EnableDoubleBuffer(_flowMissedCalls);
+
+        missedCallsPanel.Controls.Add(_flowMissedCalls);
+        missedCallsPanel.Controls.Add(missedCallsHeader);
+        _tabMissedCalls.Controls.Add(missedCallsPanel);
+
+        _tabControl.TabPages.Add(_tabConversations);
+        _tabControl.TabPages.Add(_tabMissedCalls);
 
         // SplitContainer principal (fixed width, no resizable)
         _splitContainer = new SplitContainer
@@ -154,8 +228,8 @@ public partial class MainForm : Form
             }
         };
 
-        // Panel izquierdo: Lista de conversaciones
-        _splitContainer.Panel1.Controls.Add(conversationsPanel);
+        // Panel izquierdo: TabControl con Conversaciones y Llamadas Perdidas
+        _splitContainer.Panel1.Controls.Add(_tabControl);
 
         // Panel derecho: Chat
         var chatPanel = new Panel { Dock = DockStyle.Fill };
@@ -277,6 +351,7 @@ public partial class MainForm : Form
             _signalRService.OnNewSentMessage += SignalRService_OnNewSentMessage;
             _signalRService.OnDbError += SignalRService_OnDbError;
             _signalRService.OnEsendexDeleteError += SignalRService_OnEsendexDeleteError;
+            _signalRService.OnMissedCallsUpdated += SignalRService_OnMissedCallsUpdated;
             _signalRService.OnConnected += SignalRService_OnConnected;
             _signalRService.OnDisconnected += SignalRService_OnDisconnected;
             _signalRService.OnReconnecting += SignalRService_OnReconnecting;
@@ -295,6 +370,7 @@ public partial class MainForm : Form
     {
         await CheckApiConnectionAsync();
         await LoadConversationsAsync();
+        await LoadMissedCallsAsync();
         await ConnectSignalRAsync();
     }
 
@@ -867,6 +943,192 @@ public partial class MainForm : Form
     private void SignalRService_OnEsendexDeleteError(string error)
     {
         ShowError($"Error Esendex: {error}");
+    }
+
+    private void SignalRService_OnMissedCallsUpdated()
+    {
+        if (InvokeRequired)
+        {
+            Invoke(new Action(() => SignalRService_OnMissedCallsUpdated()));
+            return;
+        }
+
+#if DEBUG
+        System.Diagnostics.Debug.WriteLine("[MainForm] MissedCallsUpdated received via SignalR");
+#endif
+
+        // Refrescar llamadas perdidas en segundo plano
+        _ = Task.Run(async () =>
+        {
+            await LoadMissedCallsAsync();
+        });
+    }
+
+    private async Task LoadMissedCallsAsync()
+    {
+        if (_apiClient == null) return;
+
+        try
+        {
+            var calls = await _apiClient.GetMissedCallsFromViewAsync(limit: 200);
+            
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => RefreshMissedCallsUI(calls)));
+            }
+            else
+            {
+                RefreshMissedCallsUI(calls);
+            }
+        }
+        catch (Exception ex)
+        {
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Error loading missed calls: {ex.Message}");
+#endif
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => ShowMissedCallsError("Error al cargar llamadas perdidas")));
+            }
+            else
+            {
+                ShowMissedCallsError("Error al cargar llamadas perdidas");
+            }
+        }
+    }
+
+    private void RefreshMissedCallsUI(List<MissedCallVm>? calls)
+    {
+        if (calls == null)
+        {
+            ShowMissedCallsError("No se pudieron cargar las llamadas perdidas");
+            return;
+        }
+
+        _missedCalls = calls;
+
+        // Actualizar contador
+        _lblMissedCallsCount.Text = $"Llamadas perdidas: {calls.Count}";
+        
+        // Actualizar última actualización
+        _lblMissedCallsLastUpdate.Text = $"Última actualización: {DateTime.Now:HH:mm:ss}";
+
+        // Limpiar panel
+        _flowMissedCalls.Controls.Clear();
+
+        // Renderizar llamadas
+        foreach (var call in calls)
+        {
+            var callPanel = CreateMissedCallPanel(call);
+            _flowMissedCalls.Controls.Add(callPanel);
+        }
+    }
+
+    private Panel CreateMissedCallPanel(MissedCallVm call)
+    {
+        var panel = new Panel
+        {
+            Width = _flowMissedCalls.ClientSize.Width - 20,
+            Height = 80,
+            BackColor = Theme.Surface,
+            Margin = new Padding(0, 0, 0, Theme.Spacing8),
+            Padding = new Padding(Theme.Spacing12),
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        Theme.EnableDoubleBuffer(panel);
+
+        // Hora
+        var lblTime = new Label
+        {
+            Text = call.DateAndTime.ToString("HH:mm:ss"),
+            Font = Theme.Small,
+            ForeColor = Theme.TextSecondary,
+            Location = new Point(Theme.Spacing12, Theme.Spacing8),
+            AutoSize = true
+        };
+
+        // Fecha
+        var lblDate = new Label
+        {
+            Text = call.DateAndTime.ToString("dd/MM/yyyy"),
+            Font = Theme.Small,
+            ForeColor = Theme.TextSecondary,
+            Location = new Point(Theme.Spacing12, 24),
+            AutoSize = true
+        };
+
+        // Teléfono
+        var lblPhone = new Label
+        {
+            Text = call.PhoneNumber,
+            Font = Theme.BodyBold,
+            ForeColor = Theme.TextPrimary,
+            Location = new Point(120, Theme.Spacing8),
+            AutoSize = true
+        };
+
+        // Nombre
+        var displayName = !string.IsNullOrWhiteSpace(call.NombrePila) 
+            ? call.NombrePila 
+            : (!string.IsNullOrWhiteSpace(call.NombreCompleto) ? call.NombreCompleto : "Sin nombre");
+        
+        var lblName = new Label
+        {
+            Text = displayName,
+            Font = Theme.Body,
+            ForeColor = Theme.TextPrimary,
+            Location = new Point(120, 28),
+            AutoSize = true
+        };
+
+        // Botón "Enviar SMS"
+        var btnSendSms = new Button
+        {
+            Text = "Enviar SMS",
+            Width = 100,
+            Height = 30,
+            Location = new Point(panel.Width - 120, 25),
+            BackColor = Theme.AccentBlue,
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Font = Theme.Small,
+            Cursor = Cursors.Hand
+        };
+        btnSendSms.FlatAppearance.BorderSize = 0;
+        btnSendSms.FlatAppearance.MouseOverBackColor = Theme.AccentBlueHover;
+        btnSendSms.Click += (s, e) =>
+        {
+            // Abrir conversación con este teléfono
+            _selectedPhone = NotifierDesktop.Helpers.PhoneNormalizer.Normalize(call.PhoneNumber);
+            if (!string.IsNullOrEmpty(_selectedPhone) && _chatController != null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    await _chatController.LoadChatAsync(_selectedPhone);
+                    if (InvokeRequired)
+                    {
+                        Invoke(new Action(() =>
+                        {
+                            RefreshChat();
+                            UpdateChatHeader(_selectedPhone);
+                            _tabControl.SelectedTab = _tabConversations;
+                        }));
+                    }
+                });
+            }
+        };
+        Theme.EnableDoubleBuffer(btnSendSms);
+
+        panel.Controls.AddRange(new Control[] { lblTime, lblDate, lblPhone, lblName, btnSendSms });
+        
+        return panel;
+    }
+
+    private void ShowMissedCallsError(string message)
+    {
+        _lblMissedCallsCount.Text = message;
+        _lblMissedCallsCount.ForeColor = Theme.Danger;
+        _lblMissedCallsLastUpdate.Text = "";
     }
 
     private void SignalRService_OnConnected()
