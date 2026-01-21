@@ -272,6 +272,9 @@ else if (Model.MissedCalls != null)
 }
 
 @section Scripts {
+    <!-- SignalR Client Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.0/signalr.min.js"></script>
+    
     <script>
         // Auto-refresh cada 30 segundos (opcional)
         // setTimeout(() => window.location.reload(), 30000);
@@ -463,6 +466,43 @@ else if (Model.MissedCalls != null)
                 if (refreshIcon) refreshIcon.classList.remove('spinner-border', 'spinner-border-sm');
             }
         }
+
+        // SignalR Connection para actualizaciones en tiempo real
+        const callsConnection = new signalR.HubConnectionBuilder()
+            .withUrl("/hubs/messages")
+            .withAutomaticReconnect()
+            .build();
+
+        // Escuchar evento CallsUpdated
+        callsConnection.on("CallsUpdated", (data) => {
+            console.log("CallsUpdated recibido via SignalR:", data);
+            
+            // Refrescar la página automáticamente cuando hay nuevas llamadas
+            // Usamos refreshCallsPartial para una actualización más suave
+            refreshCallsPartial();
+        });
+
+        // Iniciar conexión SignalR
+        callsConnection.start()
+            .then(() => {
+                console.log("SignalR conectado para Calls. Escuchando actualizaciones...");
+            })
+            .catch((err) => {
+                console.error("Error conectando SignalR para Calls:", err);
+            });
+
+        // Manejar reconexión
+        callsConnection.onreconnecting(() => {
+            console.log("SignalR reconectando para Calls...");
+        });
+
+        callsConnection.onreconnected(() => {
+            console.log("SignalR reconectado para Calls");
+        });
+
+        callsConnection.onclose(() => {
+            console.log("Conexión SignalR cerrada para Calls");
+        });
     </script>
 }
 

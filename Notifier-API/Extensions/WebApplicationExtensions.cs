@@ -702,6 +702,57 @@ public static class WebApplicationExtensions
         .WithName("GetMissedCallsStats")
         .WithTags("Calls");
 
+        // Internal endpoint: Notify new calls (from Notifier-APiCalls)
+        app.MapPost("/api/v1/internal/calls/notify", async (
+            HttpRequest request,
+            IHubContext<MessagesHub> hubContext,
+            IConfiguration configuration,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                // Validar ApiKey
+                var expectedApiKey = configuration["NotifierApi:InternalApiKey"] ?? 
+                                    configuration["InternalApiKey"] ?? 
+                                    "notifier-internal-key-2024";
+                
+                if (!request.Headers.TryGetValue("X-Api-Key", out var apiKeyHeader) ||
+                    apiKeyHeader.ToString() != expectedApiKey)
+                {
+                    app.Logger.LogWarning("Intento de acceso al endpoint interno sin ApiKey válido desde IP: {RemoteIp}",
+                        request.HttpContext.Connection.RemoteIpAddress);
+                    return Results.Unauthorized();
+                }
+
+                // Leer payload
+                var payload = await request.ReadFromJsonAsync<CallsNotifyPayload>(ct);
+                if (payload == null)
+                {
+                    return Results.BadRequest(new { error = "Payload inválido" });
+                }
+
+                app.Logger.LogInformation("Notificación de nuevas llamadas recibida. NewCount: {NewCount}, MaxId: {MaxId}",
+                    payload.NewCount, payload.MaxId);
+
+                // Emitir SignalR
+                await hubContext.Clients.All.SendAsync("CallsUpdated", new
+                {
+                    newCount = payload.NewCount,
+                    maxId = payload.MaxId,
+                    latestAtUtc = payload.LatestAtUtc
+                }, ct);
+
+                return Results.Ok(new { success = true, message = "Notificación enviada" });
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogError(ex, "Error procesando notificación de llamadas");
+                return Results.Problem(statusCode: 500, title: "Error al procesar la notificación");
+            }
+        })
+        .WithName("NotifyNewCalls")
+        .WithTags("Internal");
+
         return app;
     }
 
@@ -722,4 +773,14 @@ public static class WebApplicationExtensions
         app.MapHub<MessagesHub>("/hubs/messages");
         return app;
     }
+}
+
+/// <summary>
+/// Payload para notificación de nuevas llamadas desde Notifier-APiCalls
+/// </summary>
+internal class CallsNotifyPayload
+{
+    public int NewCount { get; set; }
+    public long MaxId { get; set; }
+    public string LatestAtUtc { get; set; } = string.Empty;
 }
