@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Linq;
 using NotifierDesktop.Controllers;
 using NotifierDesktop.Controls;
 using NotifierDesktop.Helpers;
@@ -34,7 +36,9 @@ public partial class MainForm : Form
     private TabControl _tabControl;
     private TabPage _tabConversations;
     private TabPage _tabMissedCalls;
-    private FlowLayoutPanel _flowMissedCalls;
+    private DataGridView _dgvMissedCalls;
+    private BindingSource _missedCallsBindingSource;
+    private Label _lblMissedCallsTitle;
     private Label _lblMissedCallsCount;
     private Label _lblMissedCallsLastUpdate;
     private List<MissedCallVm> _missedCalls = new();
@@ -150,26 +154,35 @@ public partial class MainForm : Form
 
         // Tab: Llamadas Perdidas
         _tabMissedCalls = new TabPage("Llamadas Perdidas");
-        var missedCallsPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Theme.Spacing8) };
+        var missedCallsPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0) };
         missedCallsPanel.BackColor = Theme.Background;
         Theme.EnableDoubleBuffer(missedCallsPanel);
 
-        // Header con contador y última actualización
+        // Header con título, contador y última actualización
         var missedCallsHeader = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 50,
+            Height = 70,
             BackColor = Theme.Surface,
-            Padding = new Padding(Theme.Spacing8)
+            Padding = new Padding(Theme.Spacing16, Theme.Spacing12, Theme.Spacing16, Theme.Spacing12)
         };
         Theme.EnableDoubleBuffer(missedCallsHeader);
 
+        _lblMissedCallsTitle = new Label
+        {
+            Text = "Llamadas Perdidas",
+            Font = Theme.Title,
+            ForeColor = Theme.TextPrimary,
+            Location = new Point(Theme.Spacing12, Theme.Spacing8),
+            AutoSize = true
+        };
+
         _lblMissedCallsCount = new Label
         {
-            Text = "Cargando...",
-            Font = Theme.BodyBold,
-            ForeColor = Theme.TextPrimary,
-            Location = new Point(Theme.Spacing8, Theme.Spacing8),
+            Text = "Total: 0",
+            Font = Theme.Body,
+            ForeColor = Theme.TextSecondary,
+            Location = new Point(Theme.Spacing12, 32),
             AutoSize = true
         };
 
@@ -178,24 +191,71 @@ public partial class MainForm : Form
             Text = "",
             Font = Theme.Small,
             ForeColor = Theme.TextSecondary,
-            Location = new Point(Theme.Spacing8, 28),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Location = new Point(missedCallsHeader.Width - 250, Theme.Spacing8),
             AutoSize = true
         };
 
+        // Ajustar posición del label cuando cambie el tamaño del header
+        missedCallsHeader.Resize += (s, e) =>
+        {
+            _lblMissedCallsLastUpdate.Location = new Point(missedCallsHeader.Width - 250, Theme.Spacing8);
+        };
+
+        missedCallsHeader.Controls.Add(_lblMissedCallsTitle);
         missedCallsHeader.Controls.Add(_lblMissedCallsCount);
         missedCallsHeader.Controls.Add(_lblMissedCallsLastUpdate);
 
-        _flowMissedCalls = new FlowLayoutPanel
+        // DataGridView para mostrar llamadas
+        _missedCallsBindingSource = new BindingSource();
+        _dgvMissedCalls = new DataGridView
         {
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            AutoScroll = true,
-            BackColor = Theme.Background
+            DataSource = _missedCallsBindingSource,
+            ReadOnly = true,
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            AllowUserToOrderColumns = false,
+            RowHeadersVisible = false,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            MultiSelect = false,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None, // Usaremos anchos fijos
+            AutoGenerateColumns = false,
+            BackgroundColor = Theme.Background,
+            GridColor = Theme.Border,
+            BorderStyle = BorderStyle.None,
+            CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+            ColumnHeadersHeight = 40,
+            RowTemplate = { Height = 35 },
+            EnableHeadersVisualStyles = false,
+            Padding = new Padding(0)
         };
-        Theme.EnableDoubleBuffer(_flowMissedCalls);
+        Theme.EnableDoubleBuffer(_dgvMissedCalls);
 
-        missedCallsPanel.Controls.Add(_flowMissedCalls);
+        // Estilo de encabezados - fondo uniforme
+        _dgvMissedCalls.ColumnHeadersDefaultCellStyle.BackColor = Theme.Surface;
+        _dgvMissedCalls.ColumnHeadersDefaultCellStyle.ForeColor = Theme.TextPrimary;
+        _dgvMissedCalls.ColumnHeadersDefaultCellStyle.Font = Theme.BodyBold;
+        _dgvMissedCalls.ColumnHeadersDefaultCellStyle.Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8);
+        _dgvMissedCalls.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
+        _dgvMissedCalls.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
+        _dgvMissedCalls.ColumnHeadersDefaultCellStyle.SelectionBackColor = Theme.Surface; // Evitar cambio de color al seleccionar header
+
+        // Estilo de filas alternas - fondo uniforme para todas las celdas
+        _dgvMissedCalls.AlternatingRowsDefaultCellStyle.BackColor = Theme.Surface;
+        _dgvMissedCalls.DefaultCellStyle.BackColor = Theme.Background;
+        _dgvMissedCalls.DefaultCellStyle.ForeColor = Theme.TextPrimary;
+        _dgvMissedCalls.DefaultCellStyle.Font = Theme.Body;
+        _dgvMissedCalls.DefaultCellStyle.Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8);
+        _dgvMissedCalls.DefaultCellStyle.SelectionBackColor = Theme.AccentBlue;
+        _dgvMissedCalls.DefaultCellStyle.SelectionForeColor = Color.White;
+        _dgvMissedCalls.DefaultCellStyle.WrapMode = DataGridViewTriState.False;
+
+        // Configurar columnas manualmente
+        SetupMissedCallsColumns();
+
+        missedCallsPanel.Controls.Add(_dgvMissedCalls);
         missedCallsPanel.Controls.Add(missedCallsHeader);
         _tabMissedCalls.Controls.Add(missedCallsPanel);
 
@@ -997,6 +1057,143 @@ public partial class MainForm : Form
         }
     }
 
+    private void SetupMissedCallsColumns()
+    {
+        // Limpiar columnas existentes si las hay
+        _dgvMissedCalls.Columns.Clear();
+
+        // Columna Id (oculta - solo para referencia interna)
+        var colId = new DataGridViewTextBoxColumn
+        {
+            Name = "Id",
+            DataPropertyName = "Id",
+            HeaderText = "Id",
+            Visible = false,
+            Width = 0
+        };
+
+        // Columna Fecha/Hora - ancho fijo suficiente para mostrar fecha completa
+        var colDateAndTime = new DataGridViewTextBoxColumn
+        {
+            Name = "DateAndTime",
+            DataPropertyName = "DateAndTime",
+            HeaderText = "Fecha/Hora",
+            Width = 160,
+            MinimumWidth = 140,
+            Resizable = DataGridViewTriState.True,
+            DefaultCellStyle = new DataGridViewCellStyle
+            {
+                Format = "dd/MM/yyyy HH:mm",
+                Alignment = DataGridViewContentAlignment.MiddleLeft
+            }
+        };
+
+        // Columna Teléfono - ancho suficiente para números internacionales
+        var colPhoneNumber = new DataGridViewTextBoxColumn
+        {
+            Name = "PhoneNumber",
+            DataPropertyName = "PhoneNumber",
+            HeaderText = "Teléfono",
+            Width = 150,
+            MinimumWidth = 120,
+            Resizable = DataGridViewTriState.True,
+            DefaultCellStyle = new DataGridViewCellStyle
+            {
+                Alignment = DataGridViewContentAlignment.MiddleLeft
+            }
+        };
+
+        // Columna Nombre Pila
+        var colNombrePila = new DataGridViewTextBoxColumn
+        {
+            Name = "NombrePila",
+            DataPropertyName = "NombrePila",
+            HeaderText = "Nombre",
+            Width = 150,
+            MinimumWidth = 100,
+            Resizable = DataGridViewTriState.True,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, // Esta columna se expande
+            DefaultCellStyle = new DataGridViewCellStyle
+            {
+                NullValue = "",
+                Alignment = DataGridViewContentAlignment.MiddleLeft
+            }
+        };
+
+        // Columna Nombre Completo - ocupa el resto del espacio
+        var colNombreCompleto = new DataGridViewTextBoxColumn
+        {
+            Name = "NombreCompleto",
+            DataPropertyName = "NombreCompleto",
+            HeaderText = "Nombre Completo",
+            Width = 250,
+            MinimumWidth = 150,
+            Resizable = DataGridViewTriState.True,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, // Esta columna también se expande
+            DefaultCellStyle = new DataGridViewCellStyle
+            {
+                NullValue = "",
+                Alignment = DataGridViewContentAlignment.MiddleLeft
+            }
+        };
+
+        _dgvMissedCalls.Columns.AddRange(new DataGridViewColumn[]
+        {
+            colId,
+            colDateAndTime,
+            colPhoneNumber,
+            colNombrePila,
+            colNombreCompleto
+        });
+
+        // Configurar modo de autoajuste: Fill para columnas de nombre, fijo para las demás
+        _dgvMissedCalls.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+        
+        // Ajustar anchos después de que el control tenga tamaño y se haya cargado
+        void AdjustColumnWidths()
+        {
+            if (_dgvMissedCalls.Columns.Count == 0 || _dgvMissedCalls.Width < 100) return;
+            
+            var scrollBarWidth = _dgvMissedCalls.Controls.OfType<VScrollBar>().FirstOrDefault()?.Width ?? SystemInformation.VerticalScrollBarWidth;
+            var availableWidth = _dgvMissedCalls.ClientSize.Width - scrollBarWidth;
+            
+            // Anchos fijos para columnas específicas
+            var fixedWidths = 160 + 150; // Fecha/Hora (160) + Teléfono (150)
+            var remainingWidth = Math.Max(300, availableWidth - fixedWidths);
+            
+            // Distribuir el espacio restante entre las columnas de nombre
+            var colNombrePila = _dgvMissedCalls.Columns["NombrePila"];
+            var colNombreCompleto = _dgvMissedCalls.Columns["NombreCompleto"];
+            
+            if (colNombrePila != null && colNombreCompleto != null && remainingWidth > 0)
+            {
+                colNombrePila.Width = Math.Max(100, (int)(remainingWidth * 0.35)); // 35% del espacio restante
+                colNombreCompleto.Width = Math.Max(150, remainingWidth - colNombrePila.Width); // El resto
+            }
+        }
+        
+        _dgvMissedCalls.SizeChanged += (s, e) => AdjustColumnWidths();
+        
+        // Ajustar también cuando se carguen datos o se muestre el control
+        _missedCallsBindingSource.ListChanged += (s, e) =>
+        {
+            if (e.ListChangedType == ListChangedType.Reset)
+            {
+                // Usar BeginInvoke para asegurar que el control ya tiene tamaño
+                BeginInvoke(new Action(AdjustColumnWidths));
+            }
+        };
+        
+        // Ajustar cuando el control se muestre por primera vez
+        _dgvMissedCalls.VisibleChanged += (s, e) =>
+        {
+            if (_dgvMissedCalls.Visible)
+            {
+                AdjustColumnWidths();
+            }
+        };
+    }
+
     private void RefreshMissedCallsUI(List<MissedCallVm>? calls)
     {
         if (calls == null)
@@ -1008,120 +1205,15 @@ public partial class MainForm : Form
         _missedCalls = calls;
 
         // Actualizar contador
-        _lblMissedCallsCount.Text = $"Llamadas perdidas: {calls.Count}";
+        _lblMissedCallsCount.Text = $"Total: {calls.Count}";
+        _lblMissedCallsCount.ForeColor = Theme.TextSecondary;
         
         // Actualizar última actualización
-        _lblMissedCallsLastUpdate.Text = $"Última actualización: {DateTime.Now:HH:mm:ss}";
+        _lblMissedCallsLastUpdate.Text = $"Actualizado: {DateTime.Now:HH:mm:ss}";
 
-        // Limpiar panel
-        _flowMissedCalls.Controls.Clear();
-
-        // Renderizar llamadas
-        foreach (var call in calls)
-        {
-            var callPanel = CreateMissedCallPanel(call);
-            _flowMissedCalls.Controls.Add(callPanel);
-        }
-    }
-
-    private Panel CreateMissedCallPanel(MissedCallVm call)
-    {
-        var panel = new Panel
-        {
-            Width = _flowMissedCalls.ClientSize.Width - 20,
-            Height = 80,
-            BackColor = Theme.Surface,
-            Margin = new Padding(0, 0, 0, Theme.Spacing8),
-            Padding = new Padding(Theme.Spacing12),
-            BorderStyle = BorderStyle.FixedSingle
-        };
-        Theme.EnableDoubleBuffer(panel);
-
-        // Hora
-        var lblTime = new Label
-        {
-            Text = call.DateAndTime.ToString("HH:mm:ss"),
-            Font = Theme.Small,
-            ForeColor = Theme.TextSecondary,
-            Location = new Point(Theme.Spacing12, Theme.Spacing8),
-            AutoSize = true
-        };
-
-        // Fecha
-        var lblDate = new Label
-        {
-            Text = call.DateAndTime.ToString("dd/MM/yyyy"),
-            Font = Theme.Small,
-            ForeColor = Theme.TextSecondary,
-            Location = new Point(Theme.Spacing12, 24),
-            AutoSize = true
-        };
-
-        // Teléfono
-        var lblPhone = new Label
-        {
-            Text = call.PhoneNumber,
-            Font = Theme.BodyBold,
-            ForeColor = Theme.TextPrimary,
-            Location = new Point(120, Theme.Spacing8),
-            AutoSize = true
-        };
-
-        // Nombre
-        var displayName = !string.IsNullOrWhiteSpace(call.NombrePila) 
-            ? call.NombrePila 
-            : (!string.IsNullOrWhiteSpace(call.NombreCompleto) ? call.NombreCompleto : "Sin nombre");
-        
-        var lblName = new Label
-        {
-            Text = displayName,
-            Font = Theme.Body,
-            ForeColor = Theme.TextPrimary,
-            Location = new Point(120, 28),
-            AutoSize = true
-        };
-
-        // Botón "Enviar SMS"
-        var btnSendSms = new Button
-        {
-            Text = "Enviar SMS",
-            Width = 100,
-            Height = 30,
-            Location = new Point(panel.Width - 120, 25),
-            BackColor = Theme.AccentBlue,
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat,
-            Font = Theme.Small,
-            Cursor = Cursors.Hand
-        };
-        btnSendSms.FlatAppearance.BorderSize = 0;
-        btnSendSms.FlatAppearance.MouseOverBackColor = Theme.AccentBlueHover;
-        btnSendSms.Click += (s, e) =>
-        {
-            // Abrir conversación con este teléfono
-            _selectedPhone = NotifierDesktop.Helpers.PhoneNormalizer.Normalize(call.PhoneNumber);
-            if (!string.IsNullOrEmpty(_selectedPhone) && _chatController != null)
-            {
-                _ = Task.Run(async () =>
-                {
-                    await _chatController.LoadChatAsync(_selectedPhone);
-                    if (InvokeRequired)
-                    {
-                        Invoke(new Action(() =>
-                        {
-                            RefreshChat();
-                            UpdateChatHeader(_selectedPhone);
-                            _tabControl.SelectedTab = _tabConversations;
-                        }));
-                    }
-                });
-            }
-        };
-        Theme.EnableDoubleBuffer(btnSendSms);
-
-        panel.Controls.AddRange(new Control[] { lblTime, lblDate, lblPhone, lblName, btnSendSms });
-        
-        return panel;
+        // Actualizar BindingSource
+        _missedCallsBindingSource.DataSource = calls;
+        _missedCallsBindingSource.ResetBindings(false);
     }
 
     private void ShowMissedCallsError(string message)
