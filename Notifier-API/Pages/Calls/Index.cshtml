@@ -153,10 +153,10 @@
                     <thead>
                         <tr>
                             <th class="col-id">ID</th>
-                            <th style="width: 22%;">Fecha y Hora</th>
-                            <th style="width: 22%;">Teléfono</th>
-                            <th>Cliente</th>
-                            <th style="width: 16%;">¿Devuelta?</th>
+                            <th class="col-datetime">Fecha y Hora</th>
+                            <th class="col-phone">Teléfono</th>
+                            <th class="col-client">Cliente</th>
+                            <th class="col-answered">¿Devuelta?</th>
                         </tr>
                     </thead>
                             <tbody id="callsTableBody">
@@ -187,20 +187,20 @@
                                         <td class="col-id">
                                             <code class="text-muted">#@call.Id</code>
                                         </td>
-                                        <td>
+                                        <td class="col-datetime">
                                             <div title="@call.DateAndTime.ToString("yyyy-MM-dd HH:mm:ss")">
                                                 <strong>@call.DateAndTime.ToString("dd/MM/yyyy")</strong>
                                                 <br />
                                                 <small class="text-muted">@call.DateAndTime.ToString("HH:mm:ss")</small>
                                             </div>
                                         </td>
-                                        <td>
+                                        <td class="col-phone">
                                             <span class="phone-number">
                                                 <i class="bi bi-telephone-fill text-muted"></i>
                                                 @call.PhoneNumber
                                             </span>
                                         </td>
-                                        <td>
+                                        <td class="col-client">
                                             @{
                                                 var cliente = $"{call.NombrePila ?? ""} {call.NombreCompleto ?? ""}".Trim();
                                             }
@@ -213,7 +213,7 @@
                                                 <span class="text-muted">—</span>
                                             }
                                         </td>
-                                        <td>
+                                        <td class="col-answered">
                                             @if (call.AnswerCall.HasValue)
                                             {
                                                 <span class="badge bg-success">
@@ -294,20 +294,20 @@ else if (Model.MissedCalls != null)
             return `
                 <tr>
                     <td class="col-id"><code class="text-muted">#${call.id}</code></td>
-                    <td>
+                    <td class="col-datetime">
                         <div title="${call.dateAndTime}">
                             <strong>${dateStr}</strong><br>
                             <small class="text-muted">${timeStr}</small>
                         </div>
                     </td>
-                    <td>
+                    <td class="col-phone">
                         <span class="phone-number">
                             <i class="bi bi-telephone-fill text-muted"></i>
                             ${call.phoneNumber}
                         </span>
                     </td>
-                    <td>${clienteHtml}</td>
-                    <td>${devueltaHtml}</td>
+                    <td class="col-client">${clienteHtml}</td>
+                    <td class="col-answered">${devueltaHtml}</td>
                 </tr>`;
         }
 

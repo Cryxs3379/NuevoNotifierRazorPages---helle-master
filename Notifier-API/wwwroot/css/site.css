@@ -421,6 +421,25 @@ body {
     white-space: nowrap;
 }
 
+/* Calls table: permitir texto “responsive” */
+.col-client {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.col-answered {
+    width: 120px;
+    white-space: nowrap;
+    text-align: center;
+}
+
+/* Override nowrap en headers solo para estas columnas */
+.table thead th.col-answered,
+.table thead th.col-client {
+    white-space: normal !important;
+}
+
 .table thead {
     background-color: var(--bg-secondary);
 }
