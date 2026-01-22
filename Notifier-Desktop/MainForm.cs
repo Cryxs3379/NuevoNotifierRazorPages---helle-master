@@ -21,7 +21,6 @@ public partial class MainForm : Form
     // UI Controls
     private TextBox _txtSearch;
     private FlowLayoutPanel _flowReceived;
-    private Button _btnOpenConversations;
     private Label _lblApiStatus;
     private Label _lblSignalRStatus;
     private Label _lblError;
@@ -42,7 +41,6 @@ public partial class MainForm : Form
 
     // Cache de controles de conversación para reutilización (optimización de performance)
     private readonly Dictionary<string, ConversationRowControl> _conversationControls = new();
-    private ConversationsPickerForm? _conversationsPicker;
     private ChatConversationForm? _chatForm;
 
     public MainForm(AppSettings settings)
@@ -118,24 +116,8 @@ public partial class MainForm : Form
             TextAlign = ContentAlignment.MiddleLeft
         };
 
-        _btnOpenConversations = new Button
-        {
-            Text = "Conversaciones (Ctrl+K)",
-            AutoSize = true,
-            Font = Theme.Body,
-            BackColor = Theme.AccentBlue,
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat,
-            Margin = new Padding(0, 0, Theme.Spacing8, 0),
-            Cursor = Cursors.Hand
-        };
-        _btnOpenConversations.FlatAppearance.BorderSize = 0;
-        _btnOpenConversations.FlatAppearance.MouseOverBackColor = Theme.AccentBlueHover;
-        _btnOpenConversations.Click += (s, e) => ShowConversationsPicker();
-
         statusFlow.Controls.Add(_lblApiStatus);
         statusFlow.Controls.Add(_lblSignalRStatus);
-        statusFlow.Controls.Add(_btnOpenConversations);
         statusFlow.Controls.Add(_lblError);
         statusPanel.Controls.Add(statusFlow);
 
@@ -389,35 +371,6 @@ public partial class MainForm : Form
 
         Activated += (s, e) => _isWindowFocused = true;
         Deactivate += (s, e) => _isWindowFocused = false;
-    }
-
-    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-    {
-        if (keyData == (Keys.Control | Keys.K))
-        {
-            ShowConversationsPicker();
-            return true;
-        }
-
-        return base.ProcessCmdKey(ref msg, keyData);
-    }
-
-    private void ShowConversationsPicker()
-    {
-        if (_conversationsController == null) return;
-
-        if (_conversationsPicker != null && !_conversationsPicker.IsDisposed)
-        {
-            _conversationsPicker.Focus();
-            return;
-        }
-
-        var picker = new ConversationsPickerForm(_conversationsController, _selectedPhone);
-        _conversationsPicker = picker;
-        picker.ConversationPicked += async phone => await OpenChatModalAsync(phone);
-        picker.FormClosed += (s, e) => _conversationsPicker = null;
-        picker.ShowDialog(this);
-        picker.Dispose();
     }
 
     private async Task OpenChatModalAsync(string phone)
