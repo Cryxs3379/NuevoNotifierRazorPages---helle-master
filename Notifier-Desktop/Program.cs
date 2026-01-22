@@ -12,13 +12,9 @@ static class Program
         
         // Cargar configuración
         var settings = AppSettings.Load();
-        
-        // No preguntar al iniciar: usar usuario de Windows si está vacío
-        if (string.IsNullOrWhiteSpace(settings.OperatorName))
-        {
-            settings.OperatorName = Environment.UserName;
-            settings.Save();
-        }
+
+        // Forzar SIEMPRE el operador en memoria al usuario de Windows
+        settings.OperatorName = Environment.UserName;
 
         // Crear y mostrar formulario principal
         var mainForm = new MainForm(settings);
