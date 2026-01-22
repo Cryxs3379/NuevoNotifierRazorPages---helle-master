@@ -31,7 +31,7 @@ public partial class MainForm : Form
     private Label _lblApiStatus;
     private Label _lblSignalRStatus;
     private Label _lblError;
-    
+
     // Panel de Llamadas Perdidas
     private TabControl _tabControl;
     private TabPage _tabConversations;
@@ -45,7 +45,10 @@ public partial class MainForm : Form
 
     private string? _selectedPhone;
     private bool _isWindowFocused = true;
-    
+
+    // IMPORTANTE: usado para aplicar SplitterDistance una vez que hay layout real
+    private bool _splitterInitialized = false;
+
     // Cache de controles de conversación para reutilización (optimización de performance)
     private readonly Dictionary<string, ConversationRowControl> _conversationControls = new();
 
@@ -56,6 +59,57 @@ public partial class MainForm : Form
         LoadSettings();
     }
 
+    /// <summary>
+    /// Aplica SplitterDistance y MinSizes de forma segura (solo cuando el SplitContainer ya tiene tamaño real).
+    /// Evita InvalidOperationException cuando el control aún no está layouted (ancho 0).
+    /// </summary>
+    private void ApplySplitterLayout()
+    {
+        if (_splitContainer == null || _splitContainer.IsDisposed) return;
+        if (!_splitContainer.IsHandleCreated) return;
+
+        var w = _splitContainer.ClientSize.Width;
+        if (w <= 0) return;
+
+        const int preferredMin1 = 300;
+        const int preferredMin2 = 500;
+
+        // Si el ancho no permite los mínimos preferidos, relajamos para no romper
+        int min1 = preferredMin1;
+        int min2 = preferredMin2;
+
+        var required = preferredMin1 + preferredMin2 + _splitContainer.SplitterWidth;
+        if (w < required)
+        {
+            min1 = 200;
+            min2 = 200;
+        }
+
+        // IMPORTANTE: MinSizes SOLO aquí (cuando ya hay ancho real)
+        _splitContainer.Panel1MinSize = min1;
+        _splitContainer.Panel2MinSize = min2;
+
+        var min = _splitContainer.Panel1MinSize;
+        var max = w - _splitContainer.Panel2MinSize - _splitContainer.SplitterWidth;
+        if (max < min) max = min;
+
+        var target = (int)(w * 0.32);
+        var dist = Math.Clamp(target, min, max);
+
+        if (_splitContainer.SplitterDistance == dist) return;
+
+        try
+        {
+            _splitContainer.SplitterDistance = dist;
+        }
+        catch (InvalidOperationException)
+        {
+            // Durante ciertos momentos de layout WinForms puede lanzar aunque el clamp parezca correcto.
+            // Reintentamos con el mínimo permitido.
+            try { _splitContainer.SplitterDistance = min; } catch { /* último recurso: ignorar */ }
+        }
+    }
+
     private void InitializeComponent()
     {
         Text = "Notifier Desktop - Recepción SMS";
@@ -64,10 +118,10 @@ public partial class MainForm : Form
         WindowState = FormWindowState.Maximized;
         FormBorderStyle = FormBorderStyle.Sizable;
         BackColor = Theme.Background;
-        
+
         Theme.EnableDoubleBuffer(this);
 
-        // Barra superior con estados - mejorada con FlowLayoutPanel
+        // Barra superior con estados
         var statusPanel = new Panel
         {
             Dock = DockStyle.Top,
@@ -127,7 +181,7 @@ public partial class MainForm : Form
         statusFlow.Controls.Add(_lblError);
         statusPanel.Controls.Add(statusFlow);
 
-        // TabControl para Conversaciones y Llamadas Perdidas - estilo moderno
+        // TabControl
         _tabControl = new TabControl
         {
             Dock = DockStyle.Fill,
@@ -137,18 +191,17 @@ public partial class MainForm : Form
             Padding = new Point(Theme.Spacing8, Theme.Spacing4)
         };
         Theme.EnableDoubleBuffer(_tabControl);
-        
-        // Estilo de tabs más moderno
+
         _tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
         _tabControl.DrawItem += (s, e) =>
         {
             var tabPage = _tabControl.TabPages[e.Index];
             var tabRect = _tabControl.GetTabRect(e.Index);
             var isSelected = _tabControl.SelectedIndex == e.Index;
-            
+
             e.Graphics.FillRectangle(new SolidBrush(isSelected ? Theme.Background : Theme.Surface), tabRect);
-            TextRenderer.DrawText(e.Graphics, tabPage.Text, Theme.Body, tabRect, 
-                isSelected ? Theme.TextPrimary : Theme.TextSecondary, 
+            TextRenderer.DrawText(e.Graphics, tabPage.Text, Theme.Body, tabRect,
+                isSelected ? Theme.TextPrimary : Theme.TextSecondary,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         };
 
@@ -157,8 +210,7 @@ public partial class MainForm : Form
         var conversationsPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0) };
         conversationsPanel.BackColor = Theme.Background;
         Theme.EnableDoubleBuffer(conversationsPanel);
-        
-        // Header para conversaciones
+
         var conversationsHeader = new Panel
         {
             Dock = DockStyle.Top,
@@ -167,7 +219,7 @@ public partial class MainForm : Form
             Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8)
         };
         Theme.EnableDoubleBuffer(conversationsHeader);
-        
+
         var lblConversationsTitle = new Label
         {
             Text = "CONVERSACIONES (SMS)",
@@ -176,7 +228,7 @@ public partial class MainForm : Form
             Location = new Point(Theme.Spacing12, Theme.Spacing8),
             AutoSize = true
         };
-        
+
         var lblPendingCount = new Label
         {
             Text = "Pendientes: 0",
@@ -184,12 +236,12 @@ public partial class MainForm : Form
             ForeColor = Theme.TextSecondary,
             Location = new Point(Theme.Spacing12, 28),
             AutoSize = true,
-            Name = "lblPendingCount" // Para poder encontrarlo después
+            Name = "lblPendingCount"
         };
-        
+
         conversationsHeader.Controls.Add(lblConversationsTitle);
         conversationsHeader.Controls.Add(lblPendingCount);
-        
+
         _txtSearch = new TextBox
         {
             Dock = DockStyle.Top,
@@ -202,10 +254,24 @@ public partial class MainForm : Form
             Padding = new Padding(Theme.Spacing8, Theme.Spacing8, Theme.Spacing8, Theme.Spacing8),
             Margin = new Padding(Theme.Spacing8, Theme.Spacing8, Theme.Spacing8, 0)
         };
-        _txtSearch.GotFocus += (s, e) => { if (_txtSearch.Text == "Buscar por teléfono...") { _txtSearch.Clear(); _txtSearch.ForeColor = Theme.TextPrimary; } };
-        _txtSearch.LostFocus += (s, e) => { if (string.IsNullOrWhiteSpace(_txtSearch.Text)) { _txtSearch.Text = "Buscar por teléfono..."; _txtSearch.ForeColor = Theme.TextSecondary; } };
+        _txtSearch.GotFocus += (s, e) =>
+        {
+            if (_txtSearch.Text == "Buscar por teléfono...")
+            {
+                _txtSearch.Clear();
+                _txtSearch.ForeColor = Theme.TextPrimary;
+            }
+        };
+        _txtSearch.LostFocus += (s, e) =>
+        {
+            if (string.IsNullOrWhiteSpace(_txtSearch.Text))
+            {
+                _txtSearch.Text = "Buscar por teléfono...";
+                _txtSearch.ForeColor = Theme.TextSecondary;
+            }
+        };
         _txtSearch.TextChanged += async (s, e) => await SearchConversationsAsync();
-        
+
         _flowReceived = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -215,10 +281,9 @@ public partial class MainForm : Form
             BackColor = Theme.Background
         };
         Theme.EnableDoubleBuffer(_flowReceived);
-        
-        // Suscribir a SizeChanged para ajustar anchos de filas al resize
+
         _flowReceived.SizeChanged += (s, e) => UpdateRowWidths();
-        
+
         conversationsPanel.Controls.Add(_flowReceived);
         conversationsPanel.Controls.Add(_txtSearch);
         conversationsPanel.Controls.Add(conversationsHeader);
@@ -230,7 +295,6 @@ public partial class MainForm : Form
         missedCallsPanel.BackColor = Theme.Background;
         Theme.EnableDoubleBuffer(missedCallsPanel);
 
-        // Header con título, contador y última actualización
         var missedCallsHeader = new Panel
         {
             Dock = DockStyle.Top,
@@ -240,13 +304,24 @@ public partial class MainForm : Form
         };
         Theme.EnableDoubleBuffer(missedCallsHeader);
 
+        var missedCallsHeaderLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = new Padding(0),
+            Margin = new Padding(0)
+        };
+        missedCallsHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 65F));
+        missedCallsHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35F));
+
         _lblMissedCallsTitle = new Label
         {
             Text = "Llamadas Perdidas",
             Font = Theme.Title,
             ForeColor = Theme.TextPrimary,
-            Location = new Point(Theme.Spacing12, Theme.Spacing8),
-            AutoSize = true
+            AutoSize = true,
+            Margin = new Padding(0, 0, 0, Theme.Spacing4)
         };
 
         _lblMissedCallsCount = new Label
@@ -254,8 +329,8 @@ public partial class MainForm : Form
             Text = "Total: 0",
             Font = Theme.Body,
             ForeColor = Theme.TextSecondary,
-            Location = new Point(Theme.Spacing12, 32),
-            AutoSize = true
+            AutoSize = true,
+            Margin = new Padding(0)
         };
 
         _lblMissedCallsLastUpdate = new Label
@@ -263,26 +338,30 @@ public partial class MainForm : Form
             Text = "",
             Font = Theme.Small,
             ForeColor = Theme.TextSecondary,
-            Anchor = AnchorStyles.Top | AnchorStyles.Right,
-            Location = new Point(missedCallsHeader.Width - 250, Theme.Spacing8),
-            AutoSize = true
+            AutoEllipsis = true,
+            TextAlign = ContentAlignment.MiddleRight,
+            Dock = DockStyle.Fill,
+            AutoSize = false,
+            Margin = new Padding(0)
         };
 
-        // Ajustar posición del label cuando cambie el tamaño del header
-        missedCallsHeader.Resize += (s, e) =>
+        var missedCallsLeftPanel = new FlowLayoutPanel
         {
-            if (missedCallsHeader.IsHandleCreated && missedCallsHeader.Width > 0)
-            {
-                _lblMissedCallsLastUpdate.Location = new Point(missedCallsHeader.Width - 250, Theme.Spacing8);
-            }
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(0),
+            Margin = new Padding(0)
         };
-        
+        missedCallsLeftPanel.Controls.Add(_lblMissedCallsTitle);
+        missedCallsLeftPanel.Controls.Add(_lblMissedCallsCount);
 
-        missedCallsHeader.Controls.Add(_lblMissedCallsTitle);
-        missedCallsHeader.Controls.Add(_lblMissedCallsCount);
-        missedCallsHeader.Controls.Add(_lblMissedCallsLastUpdate);
+        missedCallsHeaderLayout.Controls.Add(missedCallsLeftPanel, 0, 0);
+        missedCallsHeaderLayout.Controls.Add(_lblMissedCallsLastUpdate, 1, 0);
+        missedCallsHeader.Controls.Add(missedCallsHeaderLayout);
 
-        // DataGridView para mostrar llamadas
         _missedCallsBindingSource = new BindingSource();
         _dgvMissedCalls = new DataGridView
         {
@@ -295,8 +374,9 @@ public partial class MainForm : Form
             RowHeadersVisible = false,
             SelectionMode = DataGridViewSelectionMode.FullRowSelect,
             MultiSelect = false,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None, // Usaremos anchos fijos
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
             AutoGenerateColumns = false,
+            ScrollBars = ScrollBars.Both,
             BackgroundColor = Theme.Background,
             GridColor = Theme.Border,
             BorderStyle = BorderStyle.None,
@@ -309,28 +389,24 @@ public partial class MainForm : Form
         };
         Theme.EnableDoubleBuffer(_dgvMissedCalls);
 
-        // Estilo de encabezados - fondo uniforme
         _dgvMissedCalls.ColumnHeadersDefaultCellStyle.BackColor = Theme.Surface;
         _dgvMissedCalls.ColumnHeadersDefaultCellStyle.ForeColor = Theme.TextPrimary;
         _dgvMissedCalls.ColumnHeadersDefaultCellStyle.Font = Theme.BodyBold;
         _dgvMissedCalls.ColumnHeadersDefaultCellStyle.Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8);
         _dgvMissedCalls.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
         _dgvMissedCalls.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-        _dgvMissedCalls.ColumnHeadersDefaultCellStyle.SelectionBackColor = Theme.Surface; // Evitar cambio de color al seleccionar header
+        _dgvMissedCalls.ColumnHeadersDefaultCellStyle.SelectionBackColor = Theme.Surface;
 
-        // Estilo de filas alternas - fondo uniforme para todas las celdas
         _dgvMissedCalls.AlternatingRowsDefaultCellStyle.BackColor = Theme.Surface;
         _dgvMissedCalls.DefaultCellStyle.BackColor = Theme.Background;
         _dgvMissedCalls.DefaultCellStyle.ForeColor = Theme.TextPrimary;
         _dgvMissedCalls.DefaultCellStyle.Font = Theme.Body;
         _dgvMissedCalls.DefaultCellStyle.Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8);
-        // Selección más suave (AccentBlue pero menos saturado)
         var softBlue = Color.FromArgb(220, 230, 255);
         _dgvMissedCalls.DefaultCellStyle.SelectionBackColor = softBlue;
         _dgvMissedCalls.DefaultCellStyle.SelectionForeColor = Theme.TextPrimary;
         _dgvMissedCalls.DefaultCellStyle.WrapMode = DataGridViewTriState.False;
 
-        // Configurar columnas manualmente
         SetupMissedCallsColumns();
 
         missedCallsPanel.Controls.Add(_dgvMissedCalls);
@@ -340,40 +416,23 @@ public partial class MainForm : Form
         _tabControl.TabPages.Add(_tabConversations);
         _tabControl.TabPages.Add(_tabMissedCalls);
 
-        // SplitContainer principal (fixed width, no resizable) - mejorado
+        // SplitContainer principal
+        // >>> CLAVE: NO establecer Panel1MinSize / Panel2MinSize aquí (puede tener ancho 0 y lanzar excepción)
         _splitContainer = new SplitContainer
         {
             Dock = DockStyle.Fill,
-            FixedPanel = FixedPanel.Panel1,
-            IsSplitterFixed = true,
-            SplitterWidth = 2,
-            Panel1MinSize = 420,
+            FixedPanel = FixedPanel.None,
+            IsSplitterFixed = false,
+            SplitterWidth = 4,
             BackColor = Theme.Border
         };
-        
-        // Set splitter distance and panel2 minsize after form has size
-        Load += (s, e) =>
-        {
-            _splitContainer.Panel2MinSize = 600;
-            _splitContainer.SplitterDistance = 420;
-        };
-        
-        _splitContainer.SplitterMoved += (s, e) =>
-        {
-            // Prevent splitter movement by resetting distance
-            if (_splitContainer.SplitterDistance != 420)
-            {
-                _splitContainer.SplitterDistance = 420;
-            }
-        };
 
-        // Panel izquierdo: TabControl con Conversaciones y Llamadas Perdidas
+        // Panel izquierdo
         _splitContainer.Panel1.Controls.Add(_tabControl);
 
         // Panel derecho: Chat
         var chatPanel = new Panel { Dock = DockStyle.Fill };
 
-        // Header del chat - más limpio
         _chatHeader = new Panel
         {
             Dock = DockStyle.Top,
@@ -404,7 +463,6 @@ public partial class MainForm : Form
         _chatHeader.Controls.Add(_lblChatPhone);
         _chatHeader.Controls.Add(_lblAssignedTo);
 
-        // Panel de chat con scroll - mejor spacing
         _flowChat = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -416,7 +474,6 @@ public partial class MainForm : Form
         };
         Theme.EnableDoubleBuffer(_flowChat);
 
-        // Panel composer - más cómodo
         var composerPanel = new Panel
         {
             Dock = DockStyle.Bottom,
@@ -472,19 +529,32 @@ public partial class MainForm : Form
         Controls.Add(_splitContainer);
         Controls.Add(statusPanel);
 
+        // IMPORTANTE: aplicar SplitterDistance y mins cuando el form ya se ha mostrado (tamaños reales)
+        Shown += (s, e) =>
+        {
+            if (_splitterInitialized) return;
+            _splitterInitialized = true;
+            ApplySplitterLayout();
+        };
+
+        // Reaplicar en resize (solo si ya inicializó)
+        SizeChanged += (s, e) =>
+        {
+            if (!_splitterInitialized) return;
+            ApplySplitterLayout();
+        };
+
         Activated += (s, e) => _isWindowFocused = true;
         Deactivate += (s, e) => _isWindowFocused = false;
     }
 
     private void LoadSettings()
     {
-        // Usar URL fija de la API
         _apiClient = new ApiClient(AppSettings.ApiBaseUrl);
         _signalRService = new SignalRService(AppSettings.ApiBaseUrl);
         _conversationsController = new ConversationsController(_apiClient, _signalRService);
         _chatController = new ChatController(_apiClient);
 
-        // Configurar eventos SignalR
         if (_signalRService != null)
         {
             _signalRService.OnNewMessage += SignalRService_OnNewMessage;
@@ -497,13 +567,7 @@ public partial class MainForm : Form
             _signalRService.OnReconnecting += SignalRService_OnReconnecting;
         }
 
-        Load += (s, e) =>
-        {
-            // Set splitter distance after form has size
-            _splitContainer.Panel2MinSize = 600;
-            _splitContainer.SplitterDistance = 400;
-            InitializeAsync().GetAwaiter();
-        };
+        Load += (s, e) => { InitializeAsync().GetAwaiter(); };
     }
 
     private async Task InitializeAsync()
@@ -555,43 +619,34 @@ public partial class MainForm : Form
 
         if (_conversationsController == null) return;
 
-        // Suspend layout for performance
         _flowReceived.SuspendLayout();
 
-        // Obtener conjunto de teléfonos actuales para determinar qué controles mantener/eliminar
         var currentPhones = new HashSet<string>(_conversationsController.Conversations.Select(c => c.Phone));
-        var phonesToRemove = new List<string>();
 
-        // Identificar controles a eliminar (conversaciones que ya no existen)
         foreach (var kvp in _conversationControls.ToList())
         {
             if (!currentPhones.Contains(kvp.Key))
             {
-                // Eliminar control del panel y del diccionario
                 _flowReceived.Controls.Remove(kvp.Value);
                 _conversationControls.Remove(kvp.Key);
             }
         }
 
-        // Calcular ancho objetivo para las filas
-        var scrollbarWidth = _flowReceived.Controls.Count > 0 && _flowReceived.VerticalScroll.Visible 
-            ? SystemInformation.VerticalScrollBarWidth 
+        var scrollbarWidth = _flowReceived.Controls.Count > 0 && _flowReceived.VerticalScroll.Visible
+            ? SystemInformation.VerticalScrollBarWidth
             : 0;
         var targetWidth = Math.Max(200, _flowReceived.ClientSize.Width - scrollbarWidth - 16);
 
-        // Actualizar o crear controles para conversaciones actuales
         foreach (var conv in _conversationsController.Conversations)
         {
             if (_conversationControls.TryGetValue(conv.Phone, out var existingControl))
             {
-                // Reutilizar control existente - solo actualizar datos y selección
                 existingControl.Conversation = conv;
                 existingControl.IsSelected = _selectedPhone == conv.Phone;
                 existingControl.Width = targetWidth;
             }
             else
             {
-                // Crear nuevo control para conversación nueva
                 var rowControl = new ConversationRowControl
                 {
                     Conversation = conv,
@@ -606,7 +661,6 @@ public partial class MainForm : Form
             }
         }
 
-        // Asegurar orden correcto (ordenar controles según orden de conversaciones)
         var conversationOrder = _conversationsController.Conversations
             .Select((c, idx) => new { Phone = c.Phone, Index = idx })
             .ToDictionary(x => x.Phone, x => x.Index);
@@ -619,7 +673,6 @@ public partial class MainForm : Form
             return idxA.CompareTo(idxB);
         });
 
-        // Reordenar controles en el panel si es necesario
         for (int i = 0; i < controlsList.Count; i++)
         {
             if (_flowReceived.Controls[i] != controlsList[i])
@@ -627,14 +680,10 @@ public partial class MainForm : Form
                 _flowReceived.Controls.SetChildIndex(controlsList[i], i);
             }
         }
-        
-        // Resume layout
+
         _flowReceived.ResumeLayout(true);
     }
 
-    /// <summary>
-    /// Ajusta el ancho de todas las filas de conversación al resize del panel
-    /// </summary>
     private void UpdateRowWidths()
     {
         if (InvokeRequired)
@@ -646,8 +695,8 @@ public partial class MainForm : Form
         if (_flowReceived == null || _flowReceived.Controls.Count == 0)
             return;
 
-        var scrollbarWidth = _flowReceived.VerticalScroll.Visible 
-            ? SystemInformation.VerticalScrollBarWidth 
+        var scrollbarWidth = _flowReceived.VerticalScroll.Visible
+            ? SystemInformation.VerticalScrollBarWidth
             : 0;
         var targetWidth = Math.Max(200, _flowReceived.ClientSize.Width - scrollbarWidth - 16);
 
@@ -662,66 +711,42 @@ public partial class MainForm : Form
 
     private async Task ConversationRowControl_ConversationSelected(string phone)
     {
-#if DEBUG
-        System.Diagnostics.Debug.WriteLine($"[MainForm] ConversationRowControl_ConversationSelected called with phone: '{phone}'");
-#endif
-        
         if (_selectedPhone == phone) return;
 
-        // Update selection state
         var previousPhone = _selectedPhone;
         _selectedPhone = phone;
-        
-        // Update row selection states
+
         UpdateRowSelection(previousPhone, phone);
 
-        // Normalizar phone para API (pero mantener original para display)
         var phoneNormalized = PhoneNormalizer.Normalize(phone);
         if (string.IsNullOrEmpty(phoneNormalized))
         {
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[MainForm] ERROR: Could not normalize phone '{phone}'");
-#endif
             ShowError($"Número telefónico inválido: {phone}");
             return;
         }
 
-#if DEBUG
-        System.Diagnostics.Debug.WriteLine($"[MainForm] Phone normalized: '{phone}' -> '{phoneNormalized}'");
-#endif
-
-        // Claim conversación (usar phone normalizado)
         if (_apiClient != null && !string.IsNullOrWhiteSpace(_settings.OperatorName))
         {
             await _apiClient.ClaimConversationAsync(phoneNormalized, _settings.OperatorName, 5);
         }
 
-        // Cargar chat (usar phone normalizado para API, pero el endpoint ya es tolerante)
         if (_chatController != null)
         {
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Calling LoadChatAsync with normalized phone: '{phoneNormalized}'");
-#endif
             await _chatController.LoadChatAsync(phoneNormalized);
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[MainForm] LoadChatAsync completed. ChatController has {_chatController.Messages.Count} messages");
-#endif
             RefreshChat();
         }
 
-        // Marcar como leído (usar phone normalizado)
         if (_apiClient != null && _isWindowFocused)
         {
             await _apiClient.MarkConversationReadAsync(phoneNormalized);
         }
 
-        // Actualizar header (mostrar número normalizado)
         UpdateChatHeader(phoneNormalized);
         _btnSend.Enabled = true;
         _btnSend.BackColor = Theme.AccentBlue;
         _txtMessage.Enabled = true;
     }
-    
+
     private void UpdateRowSelection(string? previousPhone, string newPhone)
     {
         if (InvokeRequired)
@@ -729,7 +754,7 @@ public partial class MainForm : Form
             Invoke(new Action<string?, string>(UpdateRowSelection), previousPhone, newPhone);
             return;
         }
-        
+
         foreach (Control ctrl in _flowReceived.Controls)
         {
             if (ctrl is ConversationRowControl row)
@@ -747,62 +772,24 @@ public partial class MainForm : Form
             return;
         }
 
-        if (_chatController == null)
-        {
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine("[MainForm] RefreshChat: _chatController is null");
-#endif
-            return;
-        }
-
-#if DEBUG
-        System.Diagnostics.Debug.WriteLine($"[MainForm] RefreshChat: _chatController.Messages.Count = {_chatController.Messages.Count}");
-#endif
+        if (_chatController == null) return;
 
         _flowChat.Controls.Clear();
-
-        if (_chatController.Messages.Count == 0)
-        {
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine("[MainForm] RefreshChat: No messages to display");
-#endif
-            return; // No hacer scroll si no hay mensajes
-        }
+        if (_chatController.Messages.Count == 0) return;
 
         foreach (var msg in _chatController.Messages)
         {
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Adding message bubble: Id={msg.Id}, Direction={msg.Direction}, Text='{msg.Text?.Substring(0, Math.Min(30, msg.Text?.Length ?? 0))}...'");
-#endif
-            
-            var bubble = new MessageBubbleControl
-            {
-                Message = msg  // Asignar Message primero (esto llama UpdateUI y calcula tamaño)
-            };
-            
-            // Ajustar ancho máximo después de que UpdateUI haya calculado el tamaño
+            var bubble = new MessageBubbleControl { Message = msg };
+
             var maxWidth = _flowChat.Width - 30;
             if (maxWidth > 0 && bubble.Width > maxWidth)
-            {
                 bubble.Width = maxWidth;
-            }
-            
+
             _flowChat.Controls.Add(bubble);
-            
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Bubble added: Size={bubble.Size}, Visible={bubble.Visible}, Location={bubble.Location}");
-#endif
         }
 
-#if DEBUG
-        System.Diagnostics.Debug.WriteLine($"[MainForm] RefreshChat: Added {_flowChat.Controls.Count} bubbles to _flowChat");
-#endif
-
-        // Auto-scroll al final solo si hay controles
         if (_flowChat.Controls.Count > 0)
-        {
             _flowChat.ScrollControlIntoView(_flowChat.Controls[_flowChat.Controls.Count - 1]);
-        }
     }
 
     private void UpdateChatHeader(string phone)
@@ -816,7 +803,7 @@ public partial class MainForm : Form
         _lblChatPhone.Text = $"Conversación con: {phone}";
 
         var conv = _conversationsController?.GetSelected(phone);
-        if (conv != null && conv.AssignedTo != null && 
+        if (conv != null && conv.AssignedTo != null &&
             conv.AssignedUntil.HasValue && conv.AssignedUntil > DateTime.UtcNow)
         {
             _lblAssignedTo.Text = $"Atendiendo: {conv.AssignedTo}";
@@ -843,7 +830,6 @@ public partial class MainForm : Form
             return;
         }
 
-        // Normalizar número telefónico antes de enviar
         var phoneNormalized = PhoneNormalizer.Normalize(_selectedPhone);
         if (string.IsNullOrEmpty(phoneNormalized))
         {
@@ -857,15 +843,14 @@ public partial class MainForm : Form
 
         try
         {
-            // Enviar con número normalizado, incluyendo nombre del operador
-            var operatorName = !string.IsNullOrWhiteSpace(_settings.OperatorName) 
-                ? _settings.OperatorName 
+            var operatorName = !string.IsNullOrWhiteSpace(_settings.OperatorName)
+                ? _settings.OperatorName
                 : Environment.UserName;
+
             var response = await _apiClient.SendMessageAsync(phoneNormalized, messageText, operatorName);
             if (response?.Success == true)
             {
                 _txtMessage.Clear();
-                // El mensaje se añadirá automáticamente cuando llegue por SignalR
             }
             else
             {
@@ -890,7 +875,6 @@ public partial class MainForm : Form
         {
             e.Handled = true;
             e.SuppressKeyPress = true;
-            // Fire-and-forget: no esperar async en event handler sincrónico para evitar deadlocks
             _ = BtnSend_Click();
         }
     }
@@ -899,6 +883,7 @@ public partial class MainForm : Form
     {
         var query = _txtSearch.Text.Trim();
         if (query == "Buscar por teléfono...") query = string.Empty;
+
         if (_conversationsController != null)
         {
             await _conversationsController.LoadConversationsAsync(query);
@@ -929,55 +914,31 @@ public partial class MainForm : Form
             return;
         }
 
-        // Obtener customerPhone: inbound usa Originator
-        var customerPhone = !string.IsNullOrWhiteSpace(message.CustomerPhone) 
-            ? message.CustomerPhone 
+        var customerPhone = !string.IsNullOrWhiteSpace(message.CustomerPhone)
+            ? message.CustomerPhone
             : message.Originator;
 
-        if (string.IsNullOrWhiteSpace(customerPhone))
-        {
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: CustomerPhone is empty for NewMessage. " +
-                $"Originator='{message.Originator}', Recipient='{message.Recipient}', Direction={message.Direction}");
-#endif
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(customerPhone)) return;
 
-        // Normalizar SIEMPRE
         var customerPhoneNormalized = Helpers.PhoneNormalizer.Normalize(customerPhone);
         if (string.IsNullOrEmpty(customerPhoneNormalized))
-        {
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: Could not normalize customerPhone '{customerPhone}', using original");
-#endif
             customerPhoneNormalized = customerPhone;
-        }
 
-        // Normalizar _selectedPhone para comparación
         var selectedPhoneNormalized = !string.IsNullOrWhiteSpace(_selectedPhone)
             ? Helpers.PhoneNormalizer.Normalize(_selectedPhone)
             : null;
         if (string.IsNullOrEmpty(selectedPhoneNormalized) && !string.IsNullOrWhiteSpace(_selectedPhone))
-        {
-            selectedPhoneNormalized = _selectedPhone; // Fallback si no se puede normalizar
-        }
+            selectedPhoneNormalized = _selectedPhone;
 
-        var isMatch = !string.IsNullOrWhiteSpace(selectedPhoneNormalized) && 
+        var isMatch = !string.IsNullOrWhiteSpace(selectedPhoneNormalized) &&
                       selectedPhoneNormalized == customerPhoneNormalized;
 
-#if DEBUG
-        System.Diagnostics.Debug.WriteLine($"[MainForm] Inbound received. selected='{_selectedPhone}' (normalized='{selectedPhoneNormalized}'), " +
-            $"customer='{customerPhone}' (normalized='{customerPhoneNormalized}'), match={isMatch}");
-#endif
-
-        // SIEMPRE actualizar conversación en lista (aunque el chat no esté abierto)
         if (_conversationsController != null)
         {
             _conversationsController.UpsertFromSignalR(message, isInbound: true);
             RefreshConversationsList();
         }
 
-        // Solo añadir al chat si está abierto y coincide
         if (isMatch && _chatController != null)
         {
             var msgVm = new MessageVm
@@ -993,11 +954,8 @@ public partial class MainForm : Form
             _chatController.AddMessage(msgVm);
             RefreshChat();
 
-            // Marcar como leído solo si la ventana está enfocada (fire-and-forget seguro)
             if (_isWindowFocused && _apiClient != null)
-            {
                 _ = _apiClient.MarkConversationReadAsync(customerPhoneNormalized);
-            }
         }
     }
 
@@ -1009,55 +967,31 @@ public partial class MainForm : Form
             return;
         }
 
-        // Obtener customerPhone: outbound usa Recipient
-        var customerPhone = !string.IsNullOrWhiteSpace(message.CustomerPhone) 
-            ? message.CustomerPhone 
+        var customerPhone = !string.IsNullOrWhiteSpace(message.CustomerPhone)
+            ? message.CustomerPhone
             : message.Recipient;
 
-        if (string.IsNullOrWhiteSpace(customerPhone))
-        {
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: CustomerPhone is empty for NewSentMessage. " +
-                $"Originator='{message.Originator}', Recipient='{message.Recipient}', Direction={message.Direction}");
-#endif
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(customerPhone)) return;
 
-        // Normalizar SIEMPRE
         var customerPhoneNormalized = Helpers.PhoneNormalizer.Normalize(customerPhone);
         if (string.IsNullOrEmpty(customerPhoneNormalized))
-        {
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: Could not normalize customerPhone '{customerPhone}', using original");
-#endif
             customerPhoneNormalized = customerPhone;
-        }
 
-        // Normalizar _selectedPhone para comparación
         var selectedPhoneNormalized = !string.IsNullOrWhiteSpace(_selectedPhone)
             ? Helpers.PhoneNormalizer.Normalize(_selectedPhone)
             : null;
         if (string.IsNullOrEmpty(selectedPhoneNormalized) && !string.IsNullOrWhiteSpace(_selectedPhone))
-        {
-            selectedPhoneNormalized = _selectedPhone; // Fallback si no se puede normalizar
-        }
+            selectedPhoneNormalized = _selectedPhone;
 
-        var isMatch = !string.IsNullOrWhiteSpace(selectedPhoneNormalized) && 
+        var isMatch = !string.IsNullOrWhiteSpace(selectedPhoneNormalized) &&
                       selectedPhoneNormalized == customerPhoneNormalized;
 
-#if DEBUG
-        System.Diagnostics.Debug.WriteLine($"[MainForm] Outbound received. selected='{_selectedPhone}' (normalized='{selectedPhoneNormalized}'), " +
-            $"customer='{customerPhone}' (normalized='{customerPhoneNormalized}'), match={isMatch}");
-#endif
-
-        // SIEMPRE actualizar conversación en lista (aunque el chat no esté abierto)
         if (_conversationsController != null)
         {
             _conversationsController.UpsertFromSignalR(message, isInbound: false);
             RefreshConversationsList();
         }
 
-        // Solo añadir al chat si está abierto y coincide
         if (isMatch && _chatController != null)
         {
             var msgVm = new MessageVm
@@ -1075,15 +1009,8 @@ public partial class MainForm : Form
         }
     }
 
-    private void SignalRService_OnDbError(string error)
-    {
-        ShowError($"Error de BD: {error}");
-    }
-
-    private void SignalRService_OnEsendexDeleteError(string error)
-    {
-        ShowError($"Error Esendex: {error}");
-    }
+    private void SignalRService_OnDbError(string error) => ShowError($"Error de BD: {error}");
+    private void SignalRService_OnEsendexDeleteError(string error) => ShowError($"Error Esendex: {error}");
 
     private void SignalRService_OnMissedCallsUpdated()
     {
@@ -1093,15 +1020,7 @@ public partial class MainForm : Form
             return;
         }
 
-#if DEBUG
-        System.Diagnostics.Debug.WriteLine("[MainForm] MissedCallsUpdated received via SignalR");
-#endif
-
-        // Refrescar llamadas perdidas en segundo plano
-        _ = Task.Run(async () =>
-        {
-            await LoadMissedCallsAsync();
-        });
+        _ = Task.Run(async () => { await LoadMissedCallsAsync(); });
     }
 
     private async Task LoadMissedCallsAsync()
@@ -1111,38 +1030,25 @@ public partial class MainForm : Form
         try
         {
             var calls = await _apiClient.GetMissedCallsFromViewAsync(limit: 200);
-            
+
             if (InvokeRequired)
-            {
                 Invoke(new Action(() => RefreshMissedCallsUI(calls)));
-            }
             else
-            {
                 RefreshMissedCallsUI(calls);
-            }
         }
-        catch (Exception ex)
+        catch
         {
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[MainForm] Error loading missed calls: {ex.Message}");
-#endif
             if (InvokeRequired)
-            {
                 Invoke(new Action(() => ShowMissedCallsError("Error al cargar llamadas perdidas")));
-            }
             else
-            {
                 ShowMissedCallsError("Error al cargar llamadas perdidas");
-            }
         }
     }
 
     private void SetupMissedCallsColumns()
     {
-        // Limpiar columnas existentes si las hay
         _dgvMissedCalls.Columns.Clear();
 
-        // Columna Id (oculta - solo para referencia interna)
         var colId = new DataGridViewTextBoxColumn
         {
             Name = "Id",
@@ -1152,7 +1058,6 @@ public partial class MainForm : Form
             Width = 0
         };
 
-        // Columna Fecha/Hora - ancho fijo suficiente para mostrar fecha completa
         var colDateAndTime = new DataGridViewTextBoxColumn
         {
             Name = "DateAndTime",
@@ -1161,6 +1066,7 @@ public partial class MainForm : Form
             Width = 160,
             MinimumWidth = 140,
             Resizable = DataGridViewTriState.True,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
             DefaultCellStyle = new DataGridViewCellStyle
             {
                 Format = "dd/MM/yyyy HH:mm",
@@ -1168,7 +1074,6 @@ public partial class MainForm : Form
             }
         };
 
-        // Columna Teléfono - ancho suficiente para números internacionales
         var colPhoneNumber = new DataGridViewTextBoxColumn
         {
             Name = "PhoneNumber",
@@ -1177,22 +1082,22 @@ public partial class MainForm : Form
             Width = 150,
             MinimumWidth = 120,
             Resizable = DataGridViewTriState.True,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
             DefaultCellStyle = new DataGridViewCellStyle
             {
                 Alignment = DataGridViewContentAlignment.MiddleLeft
             }
         };
 
-        // Columna Nombre Pila
         var colNombrePila = new DataGridViewTextBoxColumn
         {
             Name = "NombrePila",
             DataPropertyName = "NombrePila",
             HeaderText = "Nombre",
-            Width = 150,
-            MinimumWidth = 100,
+            MinimumWidth = 120,
             Resizable = DataGridViewTriState.True,
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, // Esta columna se expande
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            FillWeight = 40,
             DefaultCellStyle = new DataGridViewCellStyle
             {
                 NullValue = "",
@@ -1200,16 +1105,15 @@ public partial class MainForm : Form
             }
         };
 
-        // Columna Nombre Completo - ocupa el resto del espacio
         var colNombreCompleto = new DataGridViewTextBoxColumn
         {
             Name = "NombreCompleto",
             DataPropertyName = "NombreCompleto",
             HeaderText = "Nombre Completo",
-            Width = 250,
-            MinimumWidth = 150,
+            MinimumWidth = 180,
             Resizable = DataGridViewTriState.True,
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, // Esta columna también se expande
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            FillWeight = 60,
             DefaultCellStyle = new DataGridViewCellStyle
             {
                 NullValue = "",
@@ -1225,53 +1129,6 @@ public partial class MainForm : Form
             colNombrePila,
             colNombreCompleto
         });
-
-        // Configurar modo de autoajuste: Fill para columnas de nombre, fijo para las demás
-        _dgvMissedCalls.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
-        
-        // Ajustar anchos después de que el control tenga tamaño y se haya cargado
-        void AdjustColumnWidths()
-        {
-            if (_dgvMissedCalls.Columns.Count == 0 || _dgvMissedCalls.Width < 100) return;
-            
-            var scrollBarWidth = _dgvMissedCalls.Controls.OfType<VScrollBar>().FirstOrDefault()?.Width ?? SystemInformation.VerticalScrollBarWidth;
-            var availableWidth = _dgvMissedCalls.ClientSize.Width - scrollBarWidth;
-            
-            // Anchos fijos para columnas específicas
-            var fixedWidths = 160 + 150; // Fecha/Hora (160) + Teléfono (150)
-            var remainingWidth = Math.Max(300, availableWidth - fixedWidths);
-            
-            // Distribuir el espacio restante entre las columnas de nombre
-            var colNombrePila = _dgvMissedCalls.Columns["NombrePila"];
-            var colNombreCompleto = _dgvMissedCalls.Columns["NombreCompleto"];
-            
-            if (colNombrePila != null && colNombreCompleto != null && remainingWidth > 0)
-            {
-                colNombrePila.Width = Math.Max(100, (int)(remainingWidth * 0.35)); // 35% del espacio restante
-                colNombreCompleto.Width = Math.Max(150, remainingWidth - colNombrePila.Width); // El resto
-            }
-        }
-        
-        _dgvMissedCalls.SizeChanged += (s, e) => AdjustColumnWidths();
-        
-        // Ajustar también cuando se carguen datos o se muestre el control
-        _missedCallsBindingSource.ListChanged += (s, e) =>
-        {
-            if (e.ListChangedType == ListChangedType.Reset)
-            {
-                // Usar BeginInvoke para asegurar que el control ya tiene tamaño
-                BeginInvoke(new Action(AdjustColumnWidths));
-            }
-        };
-        
-        // Ajustar cuando el control se muestre por primera vez
-        _dgvMissedCalls.VisibleChanged += (s, e) =>
-        {
-            if (_dgvMissedCalls.Visible)
-            {
-                AdjustColumnWidths();
-            }
-        };
     }
 
     private void RefreshMissedCallsUI(List<MissedCallVm>? calls)
@@ -1284,14 +1141,11 @@ public partial class MainForm : Form
 
         _missedCalls = calls;
 
-        // Actualizar contador
         _lblMissedCallsCount.Text = $"Total: {calls.Count}";
         _lblMissedCallsCount.ForeColor = Theme.TextSecondary;
-        
-        // Actualizar última actualización con icono
+
         _lblMissedCallsLastUpdate.Text = $"● Actualizado: {DateTime.Now:HH:mm:ss}";
 
-        // Actualizar BindingSource
         _missedCallsBindingSource.DataSource = calls;
         _missedCallsBindingSource.ResetBindings(false);
     }
@@ -1303,21 +1157,14 @@ public partial class MainForm : Form
         _lblMissedCallsLastUpdate.Text = "";
     }
 
-    private void SignalRService_OnConnected()
-    {
-        UpdateSignalRStatus(true);
-    }
-
-    private void SignalRService_OnDisconnected()
-    {
-        UpdateSignalRStatus(false);
-    }
+    private void SignalRService_OnConnected() => UpdateSignalRStatus(true);
+    private void SignalRService_OnDisconnected() => UpdateSignalRStatus(false);
 
     private void SignalRService_OnReconnecting()
     {
         if (InvokeRequired)
         {
-            Invoke(new Action(() => 
+            Invoke(new Action(() =>
             {
                 _lblSignalRStatus.Text = "SignalR: Reconectando...";
                 _lblSignalRStatus.BackColor = Color.Orange;
