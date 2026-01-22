@@ -223,11 +223,6 @@ public partial class ChatConversationForm : Form
         _flowChat.Controls.Clear();
         _flowChat.Controls.Add(_lblEmpty);
 
-        if (!string.IsNullOrWhiteSpace(_settings.OperatorName))
-        {
-            await _apiClient.ClaimConversationAsync(phoneNormalized, _settings.OperatorName, 5);
-        }
-
         await _chatController.LoadChatAsync(phoneNormalized);
         RefreshChat();
 
@@ -369,6 +364,15 @@ public partial class ChatConversationForm : Form
             if (response?.Success == true)
             {
                 _txtMessage.Clear();
+                try
+                {
+                    await _apiClient.ClaimConversationAsync(_currentPhoneNormalized, operatorName, 5);
+                    UpdateChatHeader(_currentPhoneNormalized);
+                }
+                catch (Exception)
+                {
+                    // Ignorar claim fallido para no romper el envío
+                }
             }
             else
             {
