@@ -310,7 +310,8 @@ namespace NotifierAPI.Controllers
                     DateAndTime = ToSpainTime(c.DateAndTime),
                     PhoneNumber = c.PhoneNumber,
                     NombrePila = c.NombrePila,
-                    NombreCompleto = c.NombreCompleto
+                    NombreCompleto = c.NombreCompleto,
+                    AnswerCall = c.AnswerCall
                 }).ToList();
 
                 return Ok(dtos);

@@ -413,6 +413,12 @@ body {
 .table {
     margin-bottom: 0;
     color: var(--text-primary);
+    table-layout: fixed;
+}
+
+.col-id {
+    width: 72px;
+    white-space: nowrap;
 }
 
 .table thead {

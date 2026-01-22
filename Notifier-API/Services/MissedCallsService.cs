@@ -22,7 +22,7 @@ public class MissedCallsService : IMissedCallsService
             
             _logger.LogInformation("Fetching missed calls from API: {BaseUrl}", client.BaseAddress);
             
-            var response = await client.GetAsync($"/api/MissedCalls?limit={limit}", cancellationToken);
+            var response = await client.GetAsync($"/api/MissedCalls/view?limit={limit}", cancellationToken);
             
             if (!response.IsSuccessStatusCode)
             {
@@ -31,14 +31,20 @@ public class MissedCallsService : IMissedCallsService
             }
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            var result = JsonSerializer.Deserialize<MissedCallsResponse>(content, new JsonSerializerOptions
+            var calls = JsonSerializer.Deserialize<List<MissedCallDto>>(content, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             });
 
-            _logger.LogInformation("Retrieved {Count} missed calls", result?.Count ?? 0);
-            
-            return result;
+            var list = calls ?? new List<MissedCallDto>();
+            _logger.LogInformation("Retrieved {Count} missed calls", list.Count);
+
+            return new MissedCallsResponse
+            {
+                Success = true,
+                Count = list.Count,
+                Data = list
+            };
         }
         catch (HttpRequestException ex)
         {

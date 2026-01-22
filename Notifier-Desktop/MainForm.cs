@@ -314,7 +314,7 @@ public partial class MainForm : Form
             RowHeadersVisible = false,
             SelectionMode = DataGridViewSelectionMode.FullRowSelect,
             MultiSelect = false,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
             AutoGenerateColumns = false,
             ScrollBars = ScrollBars.Both,
             BackgroundColor = Theme.Background,
@@ -737,8 +737,10 @@ public partial class MainForm : Form
             Name = "Id",
             DataPropertyName = "Id",
             HeaderText = "Id",
-            Visible = false,
-            Width = 0
+            Width = 70,
+            MinimumWidth = 60,
+            Resizable = DataGridViewTriState.False,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.None
         };
 
         var colDateAndTime = new DataGridViewTextBoxColumn
@@ -746,8 +748,8 @@ public partial class MainForm : Form
             Name = "DateAndTime",
             DataPropertyName = "DateAndTime",
             HeaderText = "Fecha/Hora",
-            Width = 160,
-            MinimumWidth = 140,
+            Width = 170,
+            MinimumWidth = 150,
             Resizable = DataGridViewTriState.True,
             AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
             DefaultCellStyle = new DataGridViewCellStyle
@@ -762,8 +764,8 @@ public partial class MainForm : Form
             Name = "PhoneNumber",
             DataPropertyName = "PhoneNumber",
             HeaderText = "Teléfono",
-            Width = 150,
-            MinimumWidth = 120,
+            Width = 160,
+            MinimumWidth = 140,
             Resizable = DataGridViewTriState.True,
             AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
             DefaultCellStyle = new DataGridViewCellStyle
@@ -772,35 +774,33 @@ public partial class MainForm : Form
             }
         };
 
-        var colNombrePila = new DataGridViewTextBoxColumn
+        var colCliente = new DataGridViewTextBoxColumn
         {
-            Name = "NombrePila",
-            DataPropertyName = "NombrePila",
-            HeaderText = "Nombre",
-            MinimumWidth = 120,
+            Name = "Cliente",
+            DataPropertyName = "Cliente",
+            HeaderText = "Cliente",
+            Width = 220,
+            MinimumWidth = 180,
             Resizable = DataGridViewTriState.True,
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-            FillWeight = 40,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
             DefaultCellStyle = new DataGridViewCellStyle
             {
-                NullValue = "",
                 Alignment = DataGridViewContentAlignment.MiddleLeft
             }
         };
 
-        var colNombreCompleto = new DataGridViewTextBoxColumn
+        var colDevuelta = new DataGridViewTextBoxColumn
         {
-            Name = "NombreCompleto",
-            DataPropertyName = "NombreCompleto",
-            HeaderText = "Nombre Completo",
-            MinimumWidth = 180,
-            Resizable = DataGridViewTriState.True,
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-            FillWeight = 60,
+            Name = "Devuelta",
+            DataPropertyName = "Devuelta",
+            HeaderText = "¿Devuelta?",
+            Width = 95,
+            MinimumWidth = 90,
+            Resizable = DataGridViewTriState.False,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
             DefaultCellStyle = new DataGridViewCellStyle
             {
-                NullValue = "",
-                Alignment = DataGridViewContentAlignment.MiddleLeft
+                Alignment = DataGridViewContentAlignment.MiddleCenter
             }
         };
 
@@ -809,8 +809,8 @@ public partial class MainForm : Form
             colId,
             colDateAndTime,
             colPhoneNumber,
-            colNombrePila,
-            colNombreCompleto
+            colCliente,
+            colDevuelta
         });
     }
 

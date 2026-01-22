@@ -19,5 +19,8 @@ namespace NotifierAPI.Models
 
         [Column("NombreCompleto")]
         public string? NombreCompleto { get; set; }
+
+    [Column("AnswerCall")]
+    public long? AnswerCall { get; set; }
     }
 }
