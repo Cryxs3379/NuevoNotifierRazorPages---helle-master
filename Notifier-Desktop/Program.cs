@@ -13,17 +13,12 @@ static class Program
         // Cargar configuración
         var settings = AppSettings.Load();
         
-        // SIEMPRE pedir el nombre del operador al iniciar (obligatorio)
-        using var operatorDialog = new OperatorNameDialog(settings.OperatorName);
-        if (operatorDialog.ShowDialog() != DialogResult.OK)
+        // No preguntar al iniciar: usar usuario de Windows si está vacío
+        if (string.IsNullOrWhiteSpace(settings.OperatorName))
         {
-            // Si cancela, salir de la aplicación
-            return;
+            settings.OperatorName = Environment.UserName;
+            settings.Save();
         }
-        
-        // Actualizar el nombre del operador y guardarlo
-        settings.OperatorName = operatorDialog.OperatorName;
-        settings.Save();
 
         // Crear y mostrar formulario principal
         var mainForm = new MainForm(settings);

@@ -23,6 +23,7 @@ public partial class MainForm : Form
     private FlowLayoutPanel _flowReceived;
     private Label _lblApiStatus;
     private Label _lblSignalRStatus;
+    private Label _lblOperator;
     private Label _lblError;
 
     // Panel de Llamadas Perdidas
@@ -106,6 +107,18 @@ public partial class MainForm : Form
             TextAlign = ContentAlignment.MiddleCenter
         };
 
+        _lblOperator = new Label
+        {
+            Text = "",
+            ForeColor = Theme.TextSecondary,
+            BackColor = Color.Transparent,
+            Font = Theme.Small,
+            AutoSize = true,
+            Padding = new Padding(Theme.Spacing8, Theme.Spacing4, Theme.Spacing8, Theme.Spacing4),
+            Margin = new Padding(0, 0, Theme.Spacing8, 0),
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
         _lblError = new Label
         {
             Text = "",
@@ -118,6 +131,7 @@ public partial class MainForm : Form
 
         statusFlow.Controls.Add(_lblApiStatus);
         statusFlow.Controls.Add(_lblSignalRStatus);
+        statusFlow.Controls.Add(_lblOperator);
         statusFlow.Controls.Add(_lblError);
         statusPanel.Controls.Add(statusFlow);
 
@@ -404,6 +418,8 @@ public partial class MainForm : Form
         _conversationsController = new ConversationsController(_apiClient, _signalRService);
         _chatController = new ChatController(_apiClient);
 
+        UpdateOperatorDisplay(_settings.OperatorName);
+
         if (_signalRService != null)
         {
             _signalRService.OnNewMessage += SignalRService_OnNewMessage;
@@ -417,6 +433,21 @@ public partial class MainForm : Form
         }
 
         Load += (s, e) => { InitializeAsync().GetAwaiter(); };
+    }
+
+    private void UpdateOperatorDisplay(string? operatorName)
+    {
+        if (InvokeRequired)
+        {
+            Invoke(new Action<string?>(UpdateOperatorDisplay), operatorName);
+            return;
+        }
+
+        var name = string.IsNullOrWhiteSpace(operatorName)
+            ? Environment.UserName
+            : operatorName;
+
+        _lblOperator.Text = $"Operador: {name}";
     }
 
     private async Task InitializeAsync()
