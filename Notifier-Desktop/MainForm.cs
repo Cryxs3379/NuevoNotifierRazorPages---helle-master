@@ -314,7 +314,8 @@ public partial class MainForm : Form
             RowHeadersVisible = false,
             SelectionMode = DataGridViewSelectionMode.FullRowSelect,
             MultiSelect = false,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells,
             AutoGenerateColumns = false,
             ScrollBars = ScrollBars.Both,
             BackgroundColor = Theme.Background,
@@ -336,6 +337,7 @@ public partial class MainForm : Form
         _dgvMissedCalls.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
         _dgvMissedCalls.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
         _dgvMissedCalls.ColumnHeadersDefaultCellStyle.SelectionBackColor = Theme.Surface;
+        _dgvMissedCalls.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.True;
 
         _dgvMissedCalls.AlternatingRowsDefaultCellStyle.BackColor = Theme.Surface;
         _dgvMissedCalls.DefaultCellStyle.BackColor = Theme.Background;
@@ -779,13 +781,14 @@ public partial class MainForm : Form
             Name = "Cliente",
             DataPropertyName = "Cliente",
             HeaderText = "Cliente",
-            Width = 220,
-            MinimumWidth = 180,
+            MinimumWidth = 200,
             Resizable = DataGridViewTriState.True,
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            FillWeight = 60,
             DefaultCellStyle = new DataGridViewCellStyle
             {
-                Alignment = DataGridViewContentAlignment.MiddleLeft
+                Alignment = DataGridViewContentAlignment.MiddleLeft,
+                WrapMode = DataGridViewTriState.True
             }
         };
 
@@ -794,8 +797,8 @@ public partial class MainForm : Form
             Name = "Devuelta",
             DataPropertyName = "Devuelta",
             HeaderText = "¿Devuelta?",
-            Width = 95,
-            MinimumWidth = 90,
+            Width = 120,
+            MinimumWidth = 110,
             Resizable = DataGridViewTriState.False,
             AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
             DefaultCellStyle = new DataGridViewCellStyle
