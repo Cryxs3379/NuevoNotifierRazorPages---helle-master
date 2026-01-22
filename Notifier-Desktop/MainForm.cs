@@ -21,13 +21,7 @@ public partial class MainForm : Form
     // UI Controls
     private TextBox _txtSearch;
     private FlowLayoutPanel _flowReceived;
-    private SplitContainer _splitContainer;
-    private Panel _chatHeader;
-    private Label _lblChatPhone;
-    private Label _lblAssignedTo;
-    private FlowLayoutPanel _flowChat;
-    private TextBox _txtMessage;
-    private Button _btnSend;
+    private Button _btnOpenConversations;
     private Label _lblApiStatus;
     private Label _lblSignalRStatus;
     private Label _lblError;
@@ -46,68 +40,16 @@ public partial class MainForm : Form
     private string? _selectedPhone;
     private bool _isWindowFocused = true;
 
-    // IMPORTANTE: usado para aplicar SplitterDistance una vez que hay layout real
-    private bool _splitterInitialized = false;
-
     // Cache de controles de conversación para reutilización (optimización de performance)
     private readonly Dictionary<string, ConversationRowControl> _conversationControls = new();
+    private ConversationsPickerForm? _conversationsPicker;
+    private ChatConversationForm? _chatForm;
 
     public MainForm(AppSettings settings)
     {
         _settings = settings;
         InitializeComponent();
         LoadSettings();
-    }
-
-    /// <summary>
-    /// Aplica SplitterDistance y MinSizes de forma segura (solo cuando el SplitContainer ya tiene tamaño real).
-    /// Evita InvalidOperationException cuando el control aún no está layouted (ancho 0).
-    /// </summary>
-    private void ApplySplitterLayout()
-    {
-        if (_splitContainer == null || _splitContainer.IsDisposed) return;
-        if (!_splitContainer.IsHandleCreated) return;
-
-        var w = _splitContainer.ClientSize.Width;
-        if (w <= 0) return;
-
-        const int preferredMin1 = 300;
-        const int preferredMin2 = 500;
-
-        // Si el ancho no permite los mínimos preferidos, relajamos para no romper
-        int min1 = preferredMin1;
-        int min2 = preferredMin2;
-
-        var required = preferredMin1 + preferredMin2 + _splitContainer.SplitterWidth;
-        if (w < required)
-        {
-            min1 = 200;
-            min2 = 200;
-        }
-
-        // IMPORTANTE: MinSizes SOLO aquí (cuando ya hay ancho real)
-        _splitContainer.Panel1MinSize = min1;
-        _splitContainer.Panel2MinSize = min2;
-
-        var min = _splitContainer.Panel1MinSize;
-        var max = w - _splitContainer.Panel2MinSize - _splitContainer.SplitterWidth;
-        if (max < min) max = min;
-
-        var target = (int)(w * 0.32);
-        var dist = Math.Clamp(target, min, max);
-
-        if (_splitContainer.SplitterDistance == dist) return;
-
-        try
-        {
-            _splitContainer.SplitterDistance = dist;
-        }
-        catch (InvalidOperationException)
-        {
-            // Durante ciertos momentos de layout WinForms puede lanzar aunque el clamp parezca correcto.
-            // Reintentamos con el mínimo permitido.
-            try { _splitContainer.SplitterDistance = min; } catch { /* último recurso: ignorar */ }
-        }
     }
 
     private void InitializeComponent()
@@ -176,8 +118,24 @@ public partial class MainForm : Form
             TextAlign = ContentAlignment.MiddleLeft
         };
 
+        _btnOpenConversations = new Button
+        {
+            Text = "Conversaciones (Ctrl+K)",
+            AutoSize = true,
+            Font = Theme.Body,
+            BackColor = Theme.AccentBlue,
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Margin = new Padding(0, 0, Theme.Spacing8, 0),
+            Cursor = Cursors.Hand
+        };
+        _btnOpenConversations.FlatAppearance.BorderSize = 0;
+        _btnOpenConversations.FlatAppearance.MouseOverBackColor = Theme.AccentBlueHover;
+        _btnOpenConversations.Click += (s, e) => ShowConversationsPicker();
+
         statusFlow.Controls.Add(_lblApiStatus);
         statusFlow.Controls.Add(_lblSignalRStatus);
+        statusFlow.Controls.Add(_btnOpenConversations);
         statusFlow.Controls.Add(_lblError);
         statusPanel.Controls.Add(statusFlow);
 
@@ -409,6 +367,16 @@ public partial class MainForm : Form
 
         SetupMissedCallsColumns();
 
+        _dgvMissedCalls.CellDoubleClick += async (s, e) =>
+        {
+            if (e.RowIndex < 0) return;
+            var row = _dgvMissedCalls.Rows[e.RowIndex];
+            var call = row.DataBoundItem as MissedCallVm;
+            var phone = call?.PhoneNumber ?? row.Cells["PhoneNumber"].Value?.ToString();
+            if (string.IsNullOrWhiteSpace(phone)) return;
+            await OpenChatModalAsync(phone);
+        };
+
         missedCallsPanel.Controls.Add(_dgvMissedCalls);
         missedCallsPanel.Controls.Add(missedCallsHeader);
         _tabMissedCalls.Controls.Add(missedCallsPanel);
@@ -416,136 +384,62 @@ public partial class MainForm : Form
         _tabControl.TabPages.Add(_tabConversations);
         _tabControl.TabPages.Add(_tabMissedCalls);
 
-        // SplitContainer principal
-        // >>> CLAVE: NO establecer Panel1MinSize / Panel2MinSize aquí (puede tener ancho 0 y lanzar excepción)
-        _splitContainer = new SplitContainer
-        {
-            Dock = DockStyle.Fill,
-            FixedPanel = FixedPanel.None,
-            IsSplitterFixed = false,
-            SplitterWidth = 4,
-            BackColor = Theme.Border
-        };
-
-        // Panel izquierdo
-        _splitContainer.Panel1.Controls.Add(_tabControl);
-
-        // Panel derecho: Chat
-        var chatPanel = new Panel { Dock = DockStyle.Fill };
-
-        _chatHeader = new Panel
-        {
-            Dock = DockStyle.Top,
-            Height = 70,
-            BackColor = Theme.Surface,
-            Padding = new Padding(Theme.Spacing16, Theme.Spacing12, Theme.Spacing16, Theme.Spacing12)
-        };
-        Theme.EnableDoubleBuffer(_chatHeader);
-
-        _lblChatPhone = new Label
-        {
-            Text = "Seleccione una conversación",
-            Font = Theme.Title,
-            Location = new Point(Theme.Spacing16, Theme.Spacing12),
-            AutoSize = true,
-            ForeColor = Theme.TextPrimary
-        };
-
-        _lblAssignedTo = new Label
-        {
-            Text = "",
-            Font = Theme.Small,
-            ForeColor = Theme.Success,
-            Location = new Point(Theme.Spacing16, 38),
-            AutoSize = true
-        };
-
-        _chatHeader.Controls.Add(_lblChatPhone);
-        _chatHeader.Controls.Add(_lblAssignedTo);
-
-        _flowChat = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            AutoScroll = true,
-            BackColor = Theme.Background,
-            Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8)
-        };
-        Theme.EnableDoubleBuffer(_flowChat);
-
-        var composerPanel = new Panel
-        {
-            Dock = DockStyle.Bottom,
-            Height = 90,
-            BackColor = Theme.Surface,
-            Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8)
-        };
-        Theme.EnableDoubleBuffer(composerPanel);
-
-        _txtMessage = new TextBox
-        {
-            Dock = DockStyle.Fill,
-            Multiline = true,
-            ScrollBars = ScrollBars.Vertical,
-            AcceptsReturn = true,
-            Font = Theme.Body,
-            BorderStyle = BorderStyle.FixedSingle,
-            BackColor = Theme.Surface,
-            ForeColor = Theme.TextPrimary,
-            Margin = new Padding(0, 0, Theme.Spacing8, 0),
-            Padding = new Padding(Theme.Spacing8)
-        };
-        _txtMessage.KeyDown += TxtMessage_KeyDown;
-
-        _btnSend = new Button
-        {
-            Text = "Enviar",
-            Dock = DockStyle.Right,
-            Width = 110,
-            Height = 56,
-            Enabled = false,
-            BackColor = Theme.AccentBlue,
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat,
-            Font = Theme.BodyBold,
-            Cursor = Cursors.Hand
-        };
-        _btnSend.FlatAppearance.BorderSize = 0;
-        _btnSend.FlatAppearance.MouseOverBackColor = Theme.AccentBlueHover;
-        _btnSend.FlatAppearance.MouseDownBackColor = Color.FromArgb(0, 82, 215);
-        _btnSend.Click += async (s, e) => await BtnSend_Click();
-        Theme.EnableDoubleBuffer(_btnSend);
-
-        composerPanel.Controls.Add(_txtMessage);
-        composerPanel.Controls.Add(_btnSend);
-
-        chatPanel.Controls.Add(_flowChat);
-        chatPanel.Controls.Add(composerPanel);
-        chatPanel.Controls.Add(_chatHeader);
-
-        _splitContainer.Panel2.Controls.Add(chatPanel);
-
-        Controls.Add(_splitContainer);
+        Controls.Add(_tabControl);
         Controls.Add(statusPanel);
-
-        // IMPORTANTE: aplicar SplitterDistance y mins cuando el form ya se ha mostrado (tamaños reales)
-        Shown += (s, e) =>
-        {
-            if (_splitterInitialized) return;
-            _splitterInitialized = true;
-            ApplySplitterLayout();
-        };
-
-        // Reaplicar en resize (solo si ya inicializó)
-        SizeChanged += (s, e) =>
-        {
-            if (!_splitterInitialized) return;
-            ApplySplitterLayout();
-        };
 
         Activated += (s, e) => _isWindowFocused = true;
         Deactivate += (s, e) => _isWindowFocused = false;
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == (Keys.Control | Keys.K))
+        {
+            ShowConversationsPicker();
+            return true;
+        }
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    private void ShowConversationsPicker()
+    {
+        if (_conversationsController == null) return;
+
+        if (_conversationsPicker != null && !_conversationsPicker.IsDisposed)
+        {
+            _conversationsPicker.Focus();
+            return;
+        }
+
+        var picker = new ConversationsPickerForm(_conversationsController, _selectedPhone);
+        _conversationsPicker = picker;
+        picker.ConversationPicked += async phone => await OpenChatModalAsync(phone);
+        picker.FormClosed += (s, e) => _conversationsPicker = null;
+        picker.ShowDialog(this);
+        picker.Dispose();
+    }
+
+    private async Task OpenChatModalAsync(string phone)
+    {
+        if (_apiClient == null || _chatController == null || _conversationsController == null) return;
+
+        if (_chatForm == null || _chatForm.IsDisposed)
+        {
+            _chatForm = new ChatConversationForm(
+                _apiClient,
+                _chatController,
+                _conversationsController,
+                _settings,
+                phone);
+            _chatForm.FormClosed += (s, e) => _chatForm = null;
+            await _chatForm.OpenConversationAsync(phone, _isWindowFocused);
+            _chatForm.ShowDialog(this);
+            return;
+        }
+
+        _chatForm.Focus();
+        await _chatForm.OpenConversationAsync(phone, _isWindowFocused);
     }
 
     private void LoadSettings()
@@ -718,33 +612,7 @@ public partial class MainForm : Form
 
         UpdateRowSelection(previousPhone, phone);
 
-        var phoneNormalized = PhoneNormalizer.Normalize(phone);
-        if (string.IsNullOrEmpty(phoneNormalized))
-        {
-            ShowError($"Número telefónico inválido: {phone}");
-            return;
-        }
-
-        if (_apiClient != null && !string.IsNullOrWhiteSpace(_settings.OperatorName))
-        {
-            await _apiClient.ClaimConversationAsync(phoneNormalized, _settings.OperatorName, 5);
-        }
-
-        if (_chatController != null)
-        {
-            await _chatController.LoadChatAsync(phoneNormalized);
-            RefreshChat();
-        }
-
-        if (_apiClient != null && _isWindowFocused)
-        {
-            await _apiClient.MarkConversationReadAsync(phoneNormalized);
-        }
-
-        UpdateChatHeader(phoneNormalized);
-        _btnSend.Enabled = true;
-        _btnSend.BackColor = Theme.AccentBlue;
-        _txtMessage.Enabled = true;
+        await OpenChatModalAsync(phone);
     }
 
     private void UpdateRowSelection(string? previousPhone, string newPhone)
@@ -761,121 +629,6 @@ public partial class MainForm : Form
             {
                 row.IsSelected = row.Conversation?.Phone == newPhone;
             }
-        }
-    }
-
-    private void RefreshChat()
-    {
-        if (InvokeRequired)
-        {
-            Invoke(new Action(RefreshChat));
-            return;
-        }
-
-        if (_chatController == null) return;
-
-        _flowChat.Controls.Clear();
-        if (_chatController.Messages.Count == 0) return;
-
-        foreach (var msg in _chatController.Messages)
-        {
-            var bubble = new MessageBubbleControl { Message = msg };
-
-            var maxWidth = _flowChat.Width - 30;
-            if (maxWidth > 0 && bubble.Width > maxWidth)
-                bubble.Width = maxWidth;
-
-            _flowChat.Controls.Add(bubble);
-        }
-
-        if (_flowChat.Controls.Count > 0)
-            _flowChat.ScrollControlIntoView(_flowChat.Controls[_flowChat.Controls.Count - 1]);
-    }
-
-    private void UpdateChatHeader(string phone)
-    {
-        if (InvokeRequired)
-        {
-            Invoke(new Action<string>(UpdateChatHeader), phone);
-            return;
-        }
-
-        _lblChatPhone.Text = $"Conversación con: {phone}";
-
-        var conv = _conversationsController?.GetSelected(phone);
-        if (conv != null && conv.AssignedTo != null &&
-            conv.AssignedUntil.HasValue && conv.AssignedUntil > DateTime.UtcNow)
-        {
-            _lblAssignedTo.Text = $"Atendiendo: {conv.AssignedTo}";
-            _lblAssignedTo.Visible = true;
-        }
-        else
-        {
-            _lblAssignedTo.Visible = false;
-        }
-    }
-
-    private async Task BtnSend_Click()
-    {
-        if (_apiClient == null || string.IsNullOrWhiteSpace(_selectedPhone))
-        {
-            MessageBox.Show("Seleccione una conversación primero.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
-
-        var messageText = _txtMessage.Text.Trim();
-        if (string.IsNullOrWhiteSpace(messageText))
-        {
-            MessageBox.Show("Escriba un mensaje.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
-
-        var phoneNormalized = PhoneNormalizer.Normalize(_selectedPhone);
-        if (string.IsNullOrEmpty(phoneNormalized))
-        {
-            ShowError($"Número telefónico inválido: {_selectedPhone}. No se puede enviar el mensaje.");
-            return;
-        }
-
-        _btnSend.Enabled = false;
-        _btnSend.Text = "Enviando...";
-        _btnSend.BackColor = Theme.TextTertiary;
-
-        try
-        {
-            var operatorName = !string.IsNullOrWhiteSpace(_settings.OperatorName)
-                ? _settings.OperatorName
-                : Environment.UserName;
-
-            var response = await _apiClient.SendMessageAsync(phoneNormalized, messageText, operatorName);
-            if (response?.Success == true)
-            {
-                _txtMessage.Clear();
-            }
-            else
-            {
-                ShowError($"Error al enviar: {response?.Error ?? "Error desconocido"}");
-            }
-        }
-        catch (Exception ex)
-        {
-            ShowError($"Error al enviar mensaje: {ex.Message}");
-        }
-        finally
-        {
-            _btnSend.Enabled = !string.IsNullOrWhiteSpace(_selectedPhone);
-            _btnSend.Text = "Enviar";
-            _btnSend.BackColor = _btnSend.Enabled ? Theme.AccentBlue : Theme.TextTertiary;
-        }
-    }
-
-    private void TxtMessage_KeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyCode == Keys.Enter && !e.Shift)
-        {
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            _ = BtnSend_Click();
         }
     }
 
@@ -939,23 +692,10 @@ public partial class MainForm : Form
             RefreshConversationsList();
         }
 
-        if (isMatch && _chatController != null)
+        if (isMatch && _chatForm != null && !_chatForm.IsDisposed &&
+            _chatForm.CurrentPhoneNormalized == customerPhoneNormalized)
         {
-            var msgVm = new MessageVm
-            {
-                Id = message.Id,
-                Direction = MessageDirection.Inbound,
-                At = message.MessageAt,
-                Text = message.Body,
-                From = message.Originator,
-                To = message.Recipient,
-                SentBy = message.SentBy
-            };
-            _chatController.AddMessage(msgVm);
-            RefreshChat();
-
-            if (_isWindowFocused && _apiClient != null)
-                _ = _apiClient.MarkConversationReadAsync(customerPhoneNormalized);
+            _chatForm.AppendMessageFromSignalR(message, inbound: true);
         }
     }
 
@@ -992,20 +732,10 @@ public partial class MainForm : Form
             RefreshConversationsList();
         }
 
-        if (isMatch && _chatController != null)
+        if (isMatch && _chatForm != null && !_chatForm.IsDisposed &&
+            _chatForm.CurrentPhoneNormalized == customerPhoneNormalized)
         {
-            var msgVm = new MessageVm
-            {
-                Id = message.Id,
-                Direction = MessageDirection.Outbound,
-                At = message.MessageAt,
-                Text = message.Body,
-                From = message.Originator,
-                To = message.Recipient,
-                SentBy = message.SentBy
-            };
-            _chatController.AddMessage(msgVm);
-            RefreshChat();
+            _chatForm.AppendMessageFromSignalR(message, inbound: false);
         }
     }
 
