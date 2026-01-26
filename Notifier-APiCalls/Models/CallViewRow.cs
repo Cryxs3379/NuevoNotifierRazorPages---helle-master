@@ -6,7 +6,7 @@ namespace NotifierAPI.Models;
 public class Outgoing24hRow
 {
     [Column("Id")]
-    public int Id { get; set; }
+    public long Id { get; set; }
 
     [Column("DateAndTime")]
     public DateTime DateAndTime { get; set; }
@@ -25,7 +25,7 @@ public class Outgoing24hRow
 public class IncomingNoAtendidas24hRow
 {
     [Column("Id")]
-    public int Id { get; set; }
+    public long Id { get; set; }
 
     [Column("DateAndTime")]
     public DateTime DateAndTime { get; set; }
@@ -44,7 +44,7 @@ public class IncomingNoAtendidas24hRow
 public class IncomingAtendidas24hRow
 {
     [Column("Id")]
-    public int Id { get; set; }
+    public long Id { get; set; }
 
     [Column("DateAndTime")]
     public DateTime DateAndTime { get; set; }

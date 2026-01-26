@@ -699,21 +699,36 @@
         // Sistema de pestañas y carga bajo demanda
         // ============================================
         const apiBaseUrlForTabs = "@Model.ApiBaseUrl".replace(/\/$/, "");
+        console.log("🔧 Configuración de pestañas:");
+        console.log("📍 ApiBaseUrl desde Model:", "@Model.ApiBaseUrl");
+        console.log("📍 ApiBaseUrl normalizado:", apiBaseUrlForTabs);
 
         // Función para renderizar una fila de las vistas (4 columnas)
         function renderViewRow(item) {
-            const date = new Date(item.dateAndTime ?? item.DateAndTime);
-            const dateStr = date.toLocaleDateString('es-ES', { 
-                day: '2-digit', 
-                month: '2-digit', 
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
+            // Normalizar camelCase vs PascalCase
+            const dateAndTime = item.dateAndTime ?? item.DateAndTime;
             const phoneNumber = item.phoneNumber ?? item.PhoneNumber ?? 'N/A';
             const nombreCompleto = item.nombreCompleto ?? item.NombreCompleto ?? 'N/A';
             const nombrePila = item.nombrePila ?? item.NombrePila ?? 'N/A';
+
+            // Formatear fecha: dd/MM/yyyy HH:mm:ss
+            let dateStr = 'N/A';
+            if (dateAndTime) {
+                try {
+                    const date = new Date(dateAndTime);
+                    if (!isNaN(date.getTime())) {
+                        const day = String(date.getDate()).padStart(2, '0');
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const year = date.getFullYear();
+                        const hours = String(date.getHours()).padStart(2, '0');
+                        const minutes = String(date.getMinutes()).padStart(2, '0');
+                        const seconds = String(date.getSeconds()).padStart(2, '0');
+                        dateStr = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+                    }
+                } catch (e) {
+                    console.warn('Error formateando fecha:', dateAndTime, e);
+                }
+            }
 
             return `
                 <tr>
@@ -724,8 +739,8 @@
                             ${phoneNumber}
                         </span>
                     </td>
-                    <td>${nombreCompleto}</td>
-                    <td>${nombrePila}</td>
+                    <td>${nombreCompleto || 'N/A'}</td>
+                    <td>${nombrePila || 'N/A'}</td>
                 </tr>`;
         }
 
@@ -733,44 +748,78 @@
         async function loadTabData(tabKey) {
             let endpoint = '';
             let tbodyId = '';
+            let tabName = '';
 
             switch (tabKey) {
                 case 'outgoing24h':
                     endpoint = `${apiBaseUrlForTabs}/api/v1/calls/views/outgoing-24h`;
                     tbodyId = 'outgoing24hTableBody';
+                    tabName = 'Salientes 24h';
                     break;
                 case 'incomingNo24h':
                     endpoint = `${apiBaseUrlForTabs}/api/v1/calls/views/incoming-noatendidas-24h`;
                     tbodyId = 'incomingNo24hTableBody';
+                    tabName = 'Entrantes NO atendidas 24h';
                     break;
                 case 'incomingOk24h':
                     endpoint = `${apiBaseUrlForTabs}/api/v1/calls/views/incoming-atendidas-24h`;
                     tbodyId = 'incomingOk24hTableBody';
+                    tabName = 'Entrantes atendidas 24h';
                     break;
                 default:
-                    console.warn('Tab key no reconocido:', tabKey);
+                    console.warn('⚠️ Tab key no reconocido:', tabKey);
                     return;
             }
 
             const tbody = document.getElementById(tbodyId);
             if (!tbody) {
-                console.error(`tbody no encontrado: ${tbodyId}`);
+                console.error(`❌ tbody no encontrado: ${tbodyId}`);
                 return;
             }
 
             // Mostrar loading
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div><p class="mt-2 text-muted">Cargando datos...</p></td></tr>';
 
             try {
-                console.log(`📡 Cargando datos de ${tabKey} desde:`, endpoint);
+                console.log(`📡 Cargando tab ${tabName} (${tabKey})`);
+                console.log(`📍 URL: ${endpoint}`);
+                console.log(`🌐 ApiBaseUrl: ${apiBaseUrlForTabs}`);
+                
                 const response = await fetch(endpoint);
                 
+                console.log(`📊 HTTP Status: ${response.status} ${response.statusText}`);
+                console.log(`📋 Content-Type: ${response.headers.get('content-type') || 'N/A'}`);
+                
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    // Intentar leer el body para más información
+                    let errorBody = '';
+                    try {
+                        const text = await response.text();
+                        errorBody = text.substring(0, 200); // Primeros 200 caracteres
+                        console.error(`❌ Response body:`, errorBody);
+                    } catch (e) {
+                        console.error(`❌ No se pudo leer response body:`, e);
+                    }
+                    
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`);
+                }
+
+                // Verificar que sea JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error(`❌ Response no es JSON. Content-Type: ${contentType}`);
+                    console.error(`❌ Response body (primeros 500 chars):`, text.substring(0, 500));
+                    throw new Error(`El servidor no devolvió JSON. Content-Type: ${contentType}`);
                 }
 
                 const data = await response.json();
-                console.log(`✅ Datos cargados: ${data.length} registros`);
+                console.log(`✅ Datos cargados: ${Array.isArray(data) ? data.length : 'N/A'} registros`);
+                
+                if (!Array.isArray(data)) {
+                    console.error(`❌ Response no es un array:`, typeof data, data);
+                    throw new Error('El servidor no devolvió un array de datos');
+                }
 
                 // Cachear datos
                 tabDataCache[tabKey] = data;
@@ -778,19 +827,37 @@
                 // Renderizar filas
                 if (data && data.length > 0) {
                     tbody.innerHTML = data.map(renderViewRow).join('');
+                    console.log(`✅ ${data.length} filas renderizadas en ${tabName}`);
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">No hay datos disponibles</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted"><i class="bi bi-inbox"></i> No hay datos disponibles</td></tr>';
+                    console.log(`ℹ️ No hay datos para ${tabName}`);
                 }
             } catch (error) {
-                console.error(`❌ Error cargando ${tabKey}:`, error);
+                console.error(`❌ Error cargando ${tabName} (${tabKey}):`, error);
+                console.error(`📍 Endpoint fallido: ${endpoint}`);
+                console.error(`🌐 ApiBaseUrl usado: ${apiBaseUrlForTabs}`);
+                
+                let errorMessage = error.message || 'Error desconocido';
+                
+                // Detectar errores comunes
+                if (errorMessage.includes('404')) {
+                    errorMessage = `Endpoint no encontrado (404). Verifica que Notifier-APiCalls esté corriendo en ${apiBaseUrlForTabs}`;
+                } else if (errorMessage.includes('CORS') || errorMessage.includes('Failed to fetch')) {
+                    errorMessage = `Error de CORS o conexión. Verifica que ${apiBaseUrlForTabs} permita requests desde este origen.`;
+                } else if (errorMessage.includes('JSON')) {
+                    errorMessage = `El servidor no devolvió JSON válido. Verifica el endpoint.`;
+                }
+                
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="4" class="text-center py-4">
                             <div class="alert alert-danger mb-0">
                                 <i class="bi bi-exclamation-triangle-fill"></i>
-                                Error al cargar datos: ${error.message}
-                                <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="loadTabData('${tabKey}')">
-                                    Reintentar
+                                <strong>Error al cargar datos</strong><br>
+                                <small>${errorMessage}</small>
+                                <br><br>
+                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="loadTabData('${tabKey}')">
+                                    <i class="bi bi-arrow-clockwise"></i> Reintentar
                                 </button>
                             </div>
                         </td>
