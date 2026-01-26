@@ -87,7 +87,11 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = string.Empty; // Set Swagger UI at the app's root
 });
 
-app.UseHttpsRedirection();
+// REMOVER UseHttpsRedirection() - APiCalls corre solo en HTTP
+// app.UseHttpsRedirection(); // ❌ COMENTADO: APiCalls corre solo en HTTP
+
+// Agregar UseWebSockets para SignalR
+app.UseWebSockets();
 
 app.UseRouting();
 

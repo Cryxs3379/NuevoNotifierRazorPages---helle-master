@@ -226,15 +226,20 @@ public class CallsIngestBackgroundService : BackgroundService
             
             if (insertedCalls.Count > 0)
             {
-                _logger.LogInformation("Insertadas {RowCount} filas desde {FileName}", insertedCalls.Count, fileName);
+                _logger.LogInformation("✅ Insertadas {RowCount} filas desde {FileName}", insertedCalls.Count, fileName);
                 
                 // Emitir eventos SignalR para cada llamada nueva
                 try
                 {
+                    _logger.LogInformation("📡 Iniciando emisión de eventos SignalR para {Count} llamadas", insertedCalls.Count);
+                    
                     foreach (var call in insertedCalls)
                     {
                         // Convertir fecha a zona horaria de España (como en el controller)
                         var spainTime = TimeZoneHelper.ToSpainTime(call.DateAndTime);
+                        
+                        _logger.LogInformation("📤 Emitiendo NewMissedCall: Id={Id}, Phone={Phone}, Date={Date}", 
+                            call.Id, call.PhoneNumber, spainTime);
                         
                         await hubContext.Clients.All.SendAsync("NewMissedCall", new
                         {
@@ -246,21 +251,22 @@ public class CallsIngestBackgroundService : BackgroundService
                             loadedAt = call.LoadedAt
                         }, cancellationToken: stoppingToken);
                         
-                        _logger.LogDebug("SignalR NewMissedCall emitido: Id={Id}, Phone={Phone}", call.Id, call.PhoneNumber);
+                        _logger.LogInformation("✅ NewMissedCall emitido OK: Id={Id}", call.Id);
                     }
                     
                     // También emitir CallsUpdated como fallback/compatibilidad
+                    _logger.LogInformation("📤 Emitiendo CallsUpdated (fallback)");
                     await hubContext.Clients.All.SendAsync("CallsUpdated", cancellationToken: stoppingToken);
-                    _logger.LogDebug("Evento SignalR CallsUpdated emitido (fallback)");
+                    _logger.LogInformation("✅ CallsUpdated emitido OK");
                 }
                 catch (Exception signalREx)
                 {
-                    _logger.LogWarning(signalREx, "Error emitiendo eventos SignalR");
+                    _logger.LogError(signalREx, "❌ Error emitiendo eventos SignalR");
                 }
             }
             else
             {
-                _logger.LogWarning("No se insertaron filas desde {FileName}", fileName);
+                _logger.LogWarning("⚠️ No se insertaron filas desde {FileName} (insertedCalls.Count=0)", fileName);
             }
 
             // Mover a Processed (opcional, como en el original no se movía, pero lo dejamos)

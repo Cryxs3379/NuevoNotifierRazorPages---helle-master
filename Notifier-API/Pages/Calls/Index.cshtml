@@ -181,7 +181,7 @@
                                 </tr>
                                 @foreach (var call in Model.MissedCalls)
                                 {
-                                    <tr>
+                                    <tr data-call-id="@call.Id">
                                         <td class="col-datetime">
                                             <div title="@call.DateAndTime.ToString("yyyy-MM-dd HH:mm:ss")">
                                                 <strong>@call.DateAndTime.ToString("dd/MM/yyyy")</strong>
@@ -396,7 +396,8 @@ else if (Model.MissedCalls != null)
         const apiBaseUrl = "@Model.ApiBaseUrl".replace(/\/$/, "");
         const hubUrl = `${apiBaseUrl}/hubs/messages`;
         
-        console.log("Iniciando conexión SignalR a:", hubUrl);
+        console.log("🔌 Iniciando conexión SignalR a:", hubUrl);
+        console.log("📍 ApiBaseUrl desde Model:", "@Model.ApiBaseUrl");
         
         const callsConnection = new signalR.HubConnectionBuilder()
             .withUrl(hubUrl)
@@ -406,8 +407,12 @@ else if (Model.MissedCalls != null)
         // Función para actualizar solo las estadísticas (sin refrescar tabla)
         async function refreshStatsOnly() {
             try {
+                console.log("📊 Actualizando stats silenciosamente...");
                 const response = await fetch('/api/v1/calls/stats');
-                if (!response.ok) return;
+                if (!response.ok) {
+                    console.warn("⚠️ Error al obtener stats:", response.status);
+                    return;
+                }
                 
                 const stats = await response.json();
                 const totalEl = document.getElementById('statsTotal');
@@ -432,34 +437,38 @@ else if (Model.MissedCalls != null)
                         lastCallEl.textContent = 'N/A';
                     }
                 }
+                console.log("✅ Stats actualizados");
             } catch (error) {
-                console.error('Error actualizando stats:', error);
+                console.error('❌ Error actualizando stats:', error);
             }
         }
 
         // Escuchar evento NewMissedCall (actualización en tiempo real sin refresh)
         callsConnection.on("NewMissedCall", (call) => {
             try {
-                console.log("NewMissedCall recibido", call);
+                console.log("📨 NewMissedCall recibido:", call);
                 
                 const tbody = document.getElementById("callsTableBody");
                 if (!tbody) {
-                    console.warn("callsTableBody no encontrado, usando fallback");
+                    console.error("❌ callsTableBody no encontrado, usando fallback");
                     refreshCallsPartial();
                     return;
                 }
 
                 // Normalizar camelCase vs PascalCase
                 const id = call.id ?? call.Id ?? 0;
+                console.log("🔍 Verificando duplicado para ID:", id);
                 
                 // Evitar duplicados si ya existe
                 const existing = tbody.querySelector(`tr[data-call-id="${id}"]`);
                 if (existing) {
-                    console.log(`Llamada ${id} ya existe en la tabla, saltando`);
+                    console.log(`⏭️ Llamada ${id} ya existe en la tabla, saltando (actualizando stats)`);
                     refreshStatsOnly(); // Actualizar stats aunque sea duplicado
                     return;
                 }
 
+                console.log("✅ Insertando nueva llamada ID:", id);
+                
                 // Renderizar y insertar al inicio
                 const rowHtml = renderCallRow(call);
                 tbody.insertAdjacentHTML("afterbegin", rowHtml);
@@ -468,6 +477,7 @@ else if (Model.MissedCalls != null)
                 const maxRows = 100; // Ajustar según necesidad
                 const allRows = tbody.querySelectorAll('tr:not(#loadingRow):not(#errorRow)');
                 if (allRows.length > maxRows) {
+                    console.log(`✂️ Limpiando filas antiguas (manteniendo ${maxRows} más recientes)`);
                     // Eliminar las filas más antiguas (al final)
                     for (let i = allRows.length - 1; i >= maxRows; i--) {
                         allRows[i].remove();
@@ -479,14 +489,14 @@ else if (Model.MissedCalls != null)
                 
                 console.log(`✅ Nueva llamada ${id} insertada en la tabla`);
             } catch (e) {
-                console.error("Error aplicando NewMissedCall, usando fallback refreshCallsPartial()", e);
+                console.error("❌ Error aplicando NewMissedCall, usando fallback refreshCallsPartial()", e);
                 refreshCallsPartial();
             }
         });
 
         // Escuchar evento CallsUpdated (fallback/compatibilidad)
         callsConnection.on("CallsUpdated", () => {
-            console.log("CallsUpdated recibido via SignalR (fallback)");
+            console.log("📨 CallsUpdated recibido via SignalR (fallback)");
             
             // Solo usar como fallback si no llegó NewMissedCall
             // En la práctica, si NewMissedCall funciona, este no debería ejecutarse
@@ -497,10 +507,12 @@ else if (Model.MissedCalls != null)
         callsConnection.start()
             .then(() => {
                 console.log("✅ SignalR conectado para Calls. Escuchando actualizaciones desde:", hubUrl);
+                console.log("👂 Escuchando eventos: NewMissedCall, CallsUpdated");
             })
             .catch((err) => {
                 console.error("❌ Error conectando SignalR para Calls:", err);
-                console.error("Hub URL intentada:", hubUrl);
+                console.error("📍 Hub URL intentada:", hubUrl);
+                console.error("💡 Verifica que Notifier-APiCalls esté corriendo en", apiBaseUrl);
             });
 
         // Manejar reconexión
