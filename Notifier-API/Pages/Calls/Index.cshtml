@@ -252,15 +252,20 @@ else if (Model.MissedCalls != null)
 
         // Función para renderizar una fila de llamada
         function renderCallRow(call) {
-            const date = new Date(call.dateAndTime);
+            // Normalizar camelCase vs PascalCase
+            const id = call.id ?? call.Id ?? 0;
+            const dateAndTime = call.dateAndTime ?? call.DateAndTime;
+            const phoneNumber = call.phoneNumber ?? call.PhoneNumber ?? '';
+            const statusText = call.statusText ?? call.StatusText ?? 'N/A';
+            
+            const date = new Date(dateAndTime);
             const dateStr = date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
             const timeStr = date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const statusText = call.statusText || 'N/A';
             
             return `
-                <tr>
+                <tr data-call-id="${id}">
                     <td class="col-datetime">
-                        <div title="${call.dateAndTime}">
+                        <div title="${dateAndTime}">
                             <strong>${dateStr}</strong><br>
                             <small class="text-muted">${timeStr}</small>
                         </div>
@@ -268,7 +273,7 @@ else if (Model.MissedCalls != null)
                     <td class="col-phone">
                         <span class="phone-number">
                             <i class="bi bi-telephone-fill text-muted"></i>
-                            ${call.phoneNumber}
+                            ${phoneNumber}
                         </span>
                     </td>
                     <td class="col-status">
@@ -398,12 +403,93 @@ else if (Model.MissedCalls != null)
             .withAutomaticReconnect()
             .build();
 
-        // Escuchar evento CallsUpdated
+        // Función para actualizar solo las estadísticas (sin refrescar tabla)
+        async function refreshStatsOnly() {
+            try {
+                const response = await fetch('/api/v1/calls/stats');
+                if (!response.ok) return;
+                
+                const stats = await response.json();
+                const totalEl = document.getElementById('statsTotal');
+                const todayEl = document.getElementById('statsToday');
+                const weekEl = document.getElementById('statsWeek');
+                const lastCallEl = document.getElementById('statsLastCall');
+                
+                if (totalEl) totalEl.textContent = stats.totalMissedCalls || 0;
+                if (todayEl) todayEl.textContent = stats.todayMissedCalls || 0;
+                if (weekEl) weekEl.textContent = stats.thisWeekMissedCalls || 0;
+                
+                if (lastCallEl && stats.lastMissedCall) {
+                    try {
+                        const lastCall = typeof stats.lastMissedCall === 'string' 
+                            ? JSON.parse(stats.lastMissedCall) 
+                            : stats.lastMissedCall;
+                        if (lastCall.dateAndTime) {
+                            const lastCallDate = new Date(lastCall.dateAndTime);
+                            lastCallEl.textContent = formatRelativeTime(lastCallDate);
+                        }
+                    } catch (e) {
+                        lastCallEl.textContent = 'N/A';
+                    }
+                }
+            } catch (error) {
+                console.error('Error actualizando stats:', error);
+            }
+        }
+
+        // Escuchar evento NewMissedCall (actualización en tiempo real sin refresh)
+        callsConnection.on("NewMissedCall", (call) => {
+            try {
+                console.log("NewMissedCall recibido", call);
+                
+                const tbody = document.getElementById("callsTableBody");
+                if (!tbody) {
+                    console.warn("callsTableBody no encontrado, usando fallback");
+                    refreshCallsPartial();
+                    return;
+                }
+
+                // Normalizar camelCase vs PascalCase
+                const id = call.id ?? call.Id ?? 0;
+                
+                // Evitar duplicados si ya existe
+                const existing = tbody.querySelector(`tr[data-call-id="${id}"]`);
+                if (existing) {
+                    console.log(`Llamada ${id} ya existe en la tabla, saltando`);
+                    refreshStatsOnly(); // Actualizar stats aunque sea duplicado
+                    return;
+                }
+
+                // Renderizar y insertar al inicio
+                const rowHtml = renderCallRow(call);
+                tbody.insertAdjacentHTML("afterbegin", rowHtml);
+
+                // Limitar número de filas (mantener solo las más recientes)
+                const maxRows = 100; // Ajustar según necesidad
+                const allRows = tbody.querySelectorAll('tr:not(#loadingRow):not(#errorRow)');
+                if (allRows.length > maxRows) {
+                    // Eliminar las filas más antiguas (al final)
+                    for (let i = allRows.length - 1; i >= maxRows; i--) {
+                        allRows[i].remove();
+                    }
+                }
+
+                // Actualizar stats silenciosamente
+                refreshStatsOnly();
+                
+                console.log(`✅ Nueva llamada ${id} insertada en la tabla`);
+            } catch (e) {
+                console.error("Error aplicando NewMissedCall, usando fallback refreshCallsPartial()", e);
+                refreshCallsPartial();
+            }
+        });
+
+        // Escuchar evento CallsUpdated (fallback/compatibilidad)
         callsConnection.on("CallsUpdated", () => {
-            console.log("CallsUpdated recibido via SignalR desde Notifier-APiCalls");
+            console.log("CallsUpdated recibido via SignalR (fallback)");
             
-            // Refrescar la página automáticamente cuando hay nuevas llamadas
-            // Usamos refreshCallsPartial para una actualización más suave
+            // Solo usar como fallback si no llegó NewMissedCall
+            // En la práctica, si NewMissedCall funciona, este no debería ejecutarse
             refreshCallsPartial();
         });
 

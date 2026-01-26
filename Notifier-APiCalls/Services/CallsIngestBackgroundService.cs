@@ -13,6 +13,28 @@ using NotifierAPI.Models;
 
 namespace NotifierAPI.Services;
 
+// Helper para conversión de zona horaria (igual que en MissedCallsController)
+internal static class TimeZoneHelper
+{
+    private static readonly TimeZoneInfo SpainTimeZone =
+        TimeZoneInfo.FindSystemTimeZoneById("Romance Standard Time");
+
+    public static DateTime ToSpainTime(DateTime utcDate)
+    {
+        if (utcDate.Kind == DateTimeKind.Unspecified)
+        {
+            return DateTime.SpecifyKind(utcDate, DateTimeKind.Utc);
+        }
+
+        if (utcDate.Kind == DateTimeKind.Local)
+        {
+            return TimeZoneInfo.ConvertTimeFromUtc(utcDate.ToUniversalTime(), SpainTimeZone);
+        }
+
+        return TimeZoneInfo.ConvertTimeFromUtc(utcDate, SpainTimeZone);
+    }
+}
+
 public class CallsIngestBackgroundService : BackgroundService
 {
     private readonly CallsIngestSettings _settings;
@@ -199,22 +221,41 @@ public class CallsIngestBackgroundService : BackgroundService
                 return;
             }
 
-            // Insertar en BD
-            var insertedCount = await BulkInsertAsync(dbContext, rows, stoppingToken);
+            // Insertar en BD y obtener las filas insertadas
+            var insertedCalls = await BulkInsertAsync(dbContext, rows, fileName, stoppingToken);
             
-            if (insertedCount > 0)
+            if (insertedCalls.Count > 0)
             {
-                _logger.LogInformation("Insertadas {RowCount} filas desde {FileName}", insertedCount, fileName);
+                _logger.LogInformation("Insertadas {RowCount} filas desde {FileName}", insertedCalls.Count, fileName);
                 
-                // Emitir evento SignalR
+                // Emitir eventos SignalR para cada llamada nueva
                 try
                 {
+                    foreach (var call in insertedCalls)
+                    {
+                        // Convertir fecha a zona horaria de España (como en el controller)
+                        var spainTime = TimeZoneHelper.ToSpainTime(call.DateAndTime);
+                        
+                        await hubContext.Clients.All.SendAsync("NewMissedCall", new
+                        {
+                            id = call.Id,
+                            dateAndTime = spainTime,
+                            phoneNumber = call.PhoneNumber,
+                            statusText = call.StatusText ?? "N/A",
+                            sourceFile = call.SourceFile,
+                            loadedAt = call.LoadedAt
+                        }, cancellationToken: stoppingToken);
+                        
+                        _logger.LogDebug("SignalR NewMissedCall emitido: Id={Id}, Phone={Phone}", call.Id, call.PhoneNumber);
+                    }
+                    
+                    // También emitir CallsUpdated como fallback/compatibilidad
                     await hubContext.Clients.All.SendAsync("CallsUpdated", cancellationToken: stoppingToken);
-                    _logger.LogDebug("Evento SignalR CallsUpdated emitido");
+                    _logger.LogDebug("Evento SignalR CallsUpdated emitido (fallback)");
                 }
                 catch (Exception signalREx)
                 {
-                    _logger.LogWarning(signalREx, "Error emitiendo evento SignalR CallsUpdated");
+                    _logger.LogWarning(signalREx, "Error emitiendo eventos SignalR");
                 }
             }
             else
@@ -364,9 +405,10 @@ public class CallsIngestBackgroundService : BackgroundService
         return trimmed;
     }
 
-    private async Task<int> BulkInsertAsync(
+    private async Task<List<NotifierCallsStaging>> BulkInsertAsync(
         NotificationDbContext dbContext,
         List<NotifierRow> rows,
+        string sourceFile,
         CancellationToken stoppingToken)
     {
         var connectionString = dbContext.Database.GetConnectionString();
@@ -407,7 +449,37 @@ public class CallsIngestBackgroundService : BackgroundService
 
         await bulkCopy.WriteToServerAsync(table, stoppingToken);
         _logger.LogDebug("Bulk insert completado: {Count} filas insertadas", rows.Count);
-        return rows.Count;
+
+        // Consultar las filas recién insertadas para obtener los IDs
+        // Usamos SourceFile y LoadedAt para identificar las filas que acabamos de insertar
+        // Consultamos con una ventana de tiempo para evitar race conditions
+        var timeWindow = now.AddSeconds(-2); // 2 segundos antes del now
+        var insertedCalls = await dbContext.NotifierCallsStaging
+            .Where(c => c.SourceFile == sourceFile && 
+                       c.LoadedAt.HasValue && 
+                       c.LoadedAt.Value >= timeWindow &&
+                       c.LoadedAt.Value <= now.AddSeconds(1)) // Ventana de 1 segundo después
+            .OrderByDescending(c => c.Id)
+            .Take(rows.Count)
+            .ToListAsync(stoppingToken);
+
+        // Si no encontramos todas las filas, intentar obtener las más recientes por SourceFile
+        if (insertedCalls.Count < rows.Count)
+        {
+            _logger.LogWarning("No se encontraron todas las filas insertadas ({Found}/{Expected}), consultando por SourceFile", 
+                insertedCalls.Count, rows.Count);
+            
+            var fallbackCalls = await dbContext.NotifierCallsStaging
+                .Where(c => c.SourceFile == sourceFile)
+                .OrderByDescending(c => c.Id)
+                .Take(rows.Count)
+                .ToListAsync(stoppingToken);
+            
+            insertedCalls = fallbackCalls;
+        }
+
+        _logger.LogDebug("Consultadas {Count} filas insertadas para SignalR", insertedCalls.Count);
+        return insertedCalls;
     }
 
     private void MoveToProcessed(string fullPath, string fileName)
