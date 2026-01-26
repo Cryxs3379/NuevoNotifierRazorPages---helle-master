@@ -387,14 +387,20 @@ else if (Model.MissedCalls != null)
         }
 
         // SignalR Connection para actualizaciones en tiempo real
+        // Conectar al hub de Notifier-APiCalls (puerto 5001)
+        const apiBaseUrl = "@Model.ApiBaseUrl".replace(/\/$/, "");
+        const hubUrl = `${apiBaseUrl}/hubs/messages`;
+        
+        console.log("Iniciando conexión SignalR a:", hubUrl);
+        
         const callsConnection = new signalR.HubConnectionBuilder()
-            .withUrl("/hubs/messages")
+            .withUrl(hubUrl)
             .withAutomaticReconnect()
             .build();
 
         // Escuchar evento CallsUpdated
-        callsConnection.on("CallsUpdated", (data) => {
-            console.log("CallsUpdated recibido via SignalR:", data);
+        callsConnection.on("CallsUpdated", () => {
+            console.log("CallsUpdated recibido via SignalR desde Notifier-APiCalls");
             
             // Refrescar la página automáticamente cuando hay nuevas llamadas
             // Usamos refreshCallsPartial para una actualización más suave
@@ -404,23 +410,24 @@ else if (Model.MissedCalls != null)
         // Iniciar conexión SignalR
         callsConnection.start()
             .then(() => {
-                console.log("SignalR conectado para Calls. Escuchando actualizaciones...");
+                console.log("✅ SignalR conectado para Calls. Escuchando actualizaciones desde:", hubUrl);
             })
             .catch((err) => {
-                console.error("Error conectando SignalR para Calls:", err);
+                console.error("❌ Error conectando SignalR para Calls:", err);
+                console.error("Hub URL intentada:", hubUrl);
             });
 
         // Manejar reconexión
         callsConnection.onreconnecting(() => {
-            console.log("SignalR reconectando para Calls...");
+            console.log("🔄 SignalR reconectando para Calls...");
         });
 
         callsConnection.onreconnected(() => {
-            console.log("SignalR reconectado para Calls");
+            console.log("✅ SignalR reconectado para Calls");
         });
 
         callsConnection.onclose(() => {
-            console.log("Conexión SignalR cerrada para Calls");
+            console.log("⚠️ Conexión SignalR cerrada para Calls");
         });
     </script>
 }

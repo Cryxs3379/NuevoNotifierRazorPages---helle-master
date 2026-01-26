@@ -57,6 +57,17 @@ builder.Services.AddHostedService<CallsIngestBackgroundService>();
 // Add CORS
 builder.Services.AddCors(options =>
 {
+    // Policy para SignalR (requiere AllowCredentials)
+    options.AddPolicy("SignalRCors", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:5080") // Origen de Razor Pages
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials(); // Requerido para SignalR
+    });
+    
+    // Policy general para API
     options.AddPolicy("AllowAll", policy =>
     {
         policy.AllowAnyOrigin()
@@ -78,7 +89,10 @@ app.UseSwaggerUI(c =>
 
 app.UseHttpsRedirection();
 
-app.UseCors("AllowAll");
+app.UseRouting();
+
+// CORS debe estar después de UseRouting pero antes de UseAuthorization
+app.UseCors("SignalRCors");
 
 app.UseAuthorization();
 
