@@ -11,6 +11,7 @@ namespace NotifierAPI.Data
 
         public DbSet<IncomingCall> IncomingCalls { get; set; }
         public DbSet<MissedCallWithClientNameRow> MissedCallsWithClientName { get; set; }
+        public DbSet<NotifierCallsStaging> NotifierCallsStaging { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -31,6 +32,18 @@ namespace NotifierAPI.Data
                 entity.ToView("vw_MissedCalls_WithClientName", "dbo");
                 entity.Property(e => e.DateAndTime).HasColumnType("datetime2");
                 entity.Property(e => e.PhoneNumber).HasMaxLength(50);
+            });
+
+            // Tabla NotifierCalls_Staging
+            modelBuilder.Entity<NotifierCallsStaging>(entity =>
+            {
+                entity.ToTable("NotifierCalls_Staging", "dbo");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.DateAndTime).HasColumnType("datetime2");
+                entity.Property(e => e.PhoneNumber).HasMaxLength(50);
+                entity.Property(e => e.StatusText).HasMaxLength(255);
+                entity.Property(e => e.SourceFile).HasMaxLength(500);
+                entity.Property(e => e.LoadedAt).HasColumnType("datetime2");
             });
         }
     }

@@ -1,11 +1,16 @@
 using Microsoft.EntityFrameworkCore;
+using NotifierAPI.Configuration;
 using NotifierAPI.Data;
+using NotifierAPI.Hubs;
 using NotifierAPI.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
+
+// SignalR
+builder.Services.AddSignalR();
 
 // HttpClientFactory para IncomingCallWatcher
 builder.Services.AddHttpClient();
@@ -41,8 +46,13 @@ var watcherConfig = new IncomingCallWatcherSettings
 
 builder.Services.AddSingleton(watcherConfig);
 
-// Register IncomingCallWatcher as BackgroundService
+// CallsIngest Configuration
+builder.Services.Configure<CallsIngestSettings>(
+    builder.Configuration.GetSection("CallsIngest"));
+
+// Register BackgroundServices
 builder.Services.AddHostedService<IncomingCallWatcher>();
+builder.Services.AddHostedService<CallsIngestBackgroundService>();
 
 // Add CORS
 builder.Services.AddCors(options =>
@@ -73,6 +83,18 @@ app.UseCors("AllowAll");
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<MessagesHub>("/hubs/messages");
+
+// Validar configuración CallsIngest
+var callsIngestSettings = builder.Configuration.GetSection("CallsIngest").Get<CallsIngestSettings>();
+if (callsIngestSettings != null)
+{
+    app.Logger.LogInformation("CallsIngest configurado: WatchPath={WatchPath}", callsIngestSettings.WatchPath);
+}
+else
+{
+    app.Logger.LogWarning("CallsIngest no está configurado en appsettings.json");
+}
 
 app.Logger.LogInformation("APiCalls starting on http://localhost:5001 ...");
 app.Run("http://localhost:5001");
