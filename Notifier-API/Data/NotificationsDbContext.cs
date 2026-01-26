@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using NotifierAPI.Models;
 
 namespace NotifierAPI.Data;
 
@@ -11,6 +12,7 @@ public class NotificationsDbContext : DbContext
 
     public DbSet<NotifierSmsMessage> SmsMessages { get; set; }
     public DbSet<ConversationState> ConversationStates { get; set; }
+    public DbSet<NotifierCallsStaging> NotifierCallsStaging { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -116,6 +118,15 @@ public class NotificationsDbContext : DbContext
                 .HasColumnType("datetime2(0)")
                 .IsRequired()
                 .HasDefaultValueSql("SYSUTCDATETIME()");
+        });
+
+        modelBuilder.Entity<NotifierCallsStaging>(entity =>
+        {
+            entity.ToTable("NotifierCalls_Staging", "dbo");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.DateAndTime).HasColumnType("datetime2");
+            entity.Property(e => e.PhoneNumber).HasMaxLength(50);
+            entity.Property(e => e.StatusText).HasMaxLength(255);
         });
     }
 }

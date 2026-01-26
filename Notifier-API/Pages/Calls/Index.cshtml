@@ -152,17 +152,15 @@
                 <table class="table table-striped table-hover align-middle">
                     <thead>
                         <tr>
-                            <th class="col-id">ID</th>
                             <th class="col-datetime">Fecha y Hora</th>
                             <th class="col-phone">Teléfono</th>
-                            <th class="col-client">Cliente</th>
-                            <th class="col-answered">¿Devuelta?</th>
+                            <th class="col-status">Estado</th>
                         </tr>
                     </thead>
                             <tbody id="callsTableBody">
                                 <!-- Spinner de carga (oculto inicialmente) -->
                                 <tr id="loadingRow" style="display: none;">
-                                    <td colspan="5" class="text-center py-4">
+                                    <td colspan="3" class="text-center py-4">
                                         <div class="spinner-border text-danger" role="status">
                                             <span class="visually-hidden">Cargando...</span>
                                         </div>
@@ -171,7 +169,7 @@
                                 </tr>
                                 <!-- Fila de error (oculta inicialmente) -->
                                 <tr id="errorRow" style="display: none;">
-                                    <td colspan="5" class="text-center py-4">
+                                    <td colspan="3" class="text-center py-4">
                                         <div class="alert alert-danger mb-0">
                                             <i class="bi bi-exclamation-triangle-fill"></i>
                                             <span id="errorMessageText">Error al cargar llamadas</span>
@@ -184,9 +182,6 @@
                                 @foreach (var call in Model.MissedCalls)
                                 {
                                     <tr>
-                                        <td class="col-id">
-                                            <code class="text-muted">#@call.Id</code>
-                                        </td>
                                         <td class="col-datetime">
                                             <div title="@call.DateAndTime.ToString("yyyy-MM-dd HH:mm:ss")">
                                                 <strong>@call.DateAndTime.ToString("dd/MM/yyyy")</strong>
@@ -200,32 +195,8 @@
                                                 @call.PhoneNumber
                                             </span>
                                         </td>
-                                        <td class="col-client">
-                                            @{
-                                                var cliente = $"{call.NombrePila ?? ""} {call.NombreCompleto ?? ""}".Trim();
-                                            }
-                                            @if (!string.IsNullOrWhiteSpace(cliente))
-                                            {
-                                                @cliente
-                                            }
-                                            else
-                                            {
-                                                <span class="text-muted">—</span>
-                                            }
-                                        </td>
-                                        <td class="col-answered">
-                                            @if (call.AnswerCall.HasValue)
-                                            {
-                                                <span class="badge bg-success">
-                                                    <i class="bi bi-check-circle-fill"></i> Sí
-                                                </span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge bg-danger">
-                                                    <i class="bi bi-x-circle-fill"></i> No
-                                                </span>
-                                            }
+                                        <td class="col-status">
+                                            <span class="badge bg-info">@(call.StatusText ?? "N/A")</span>
                                         </td>
                                     </tr>
                                 }
@@ -284,16 +255,10 @@ else if (Model.MissedCalls != null)
             const date = new Date(call.dateAndTime);
             const dateStr = date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
             const timeStr = date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const cliente = `${call.nombrePila ?? ''} ${call.nombreCompleto ?? ''}`.trim();
-            const clienteHtml = cliente ? cliente : '<span class="text-muted">—</span>';
-            const devueltaHtml =
-                (call.answerCall !== null && call.answerCall !== undefined)
-                    ? '<span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Sí</span>'
-                    : '<span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> No</span>';
+            const statusText = call.statusText || 'N/A';
             
             return `
                 <tr>
-                    <td class="col-id"><code class="text-muted">#${call.id}</code></td>
                     <td class="col-datetime">
                         <div title="${call.dateAndTime}">
                             <strong>${dateStr}</strong><br>
@@ -306,8 +271,9 @@ else if (Model.MissedCalls != null)
                             ${call.phoneNumber}
                         </span>
                     </td>
-                    <td class="col-client">${clienteHtml}</td>
-                    <td class="col-answered">${devueltaHtml}</td>
+                    <td class="col-status">
+                        <span class="badge bg-info">${statusText}</span>
+                    </td>
                 </tr>`;
         }
 
@@ -385,7 +351,7 @@ else if (Model.MissedCalls != null)
                         tbody.insertAdjacentHTML('beforeend', row);
                     });
                 } else {
-                    tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="5" class="text-center py-4 text-muted">No hay llamadas perdidas</td></tr>');
+                    tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="3" class="text-center py-4 text-muted">No hay llamadas perdidas</td></tr>');
                 }
                 
                 // Inicializar tooltips

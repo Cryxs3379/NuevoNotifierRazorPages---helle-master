@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace NotifierAPI.Models
 {
-    [Table("IncomingCall", Schema = "dbo")]
+    [Table("NotifierIncomingCalls", Schema = "dbo")]
     public class IncomingCall
     {
         [Key]
@@ -22,7 +22,13 @@ namespace NotifierAPI.Models
         [Column("ClientCalledAgain")]
         public long? ClientCalledAgain { get; set; }
 
-        [Column("AnswerCall")]
-        public long? AnswerCall { get; set; }
+        [Column("Recall")]
+        public bool? Recall { get; set; }
+
+        [Column("RecalledAt")]
+        public DateTime? RecalledAt { get; set; }
+
+        [Column("RecalledByOutgoingId")]
+        public long? RecalledByOutgoingId { get; set; }
     }
 }

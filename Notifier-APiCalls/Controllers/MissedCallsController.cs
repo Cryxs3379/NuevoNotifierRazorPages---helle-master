@@ -130,7 +130,7 @@ namespace NotifierAPI.Controllers
                         call.PhoneNumber,
                         call.Status,
                         call.ClientCalledAgain,
-                        call.AnswerCall,
+                        Recall = call.Recall,
                         IsMissed = statusInfo.IsMissed,
                         IsAnswered = statusInfo.IsAnswered,
                         StatusText = statusInfo.StatusText
@@ -182,7 +182,7 @@ namespace NotifierAPI.Controllers
                         call.PhoneNumber,
                         call.Status,
                         call.ClientCalledAgain,
-                        call.AnswerCall,
+                        Recall = call.Recall,
                         IsMissedCall = statusInfo.IsMissed,
                         IsAnswered = statusInfo.IsAnswered,
                         StatusText = statusInfo.StatusText,
@@ -267,7 +267,7 @@ namespace NotifierAPI.Controllers
                     call.PhoneNumber,
                     call.Status,
                     call.ClientCalledAgain,
-                    call.AnswerCall,
+                    Recall = call.Recall,
                     IsMissed = statusInfo.IsMissed,
                     IsAnswered = statusInfo.IsAnswered,
                     StatusText = statusInfo.StatusText

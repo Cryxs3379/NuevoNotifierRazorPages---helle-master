@@ -1,16 +1,18 @@
 using System.Text.Json;
 using NotifierAPI.Models;
+using NotifierAPI.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace NotifierAPI.Services;
 
 public class MissedCallsService : IMissedCallsService
 {
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly NotificationsDbContext _dbContext;
     private readonly ILogger<MissedCallsService> _logger;
 
-    public MissedCallsService(IHttpClientFactory httpClientFactory, ILogger<MissedCallsService> logger)
+    public MissedCallsService(NotificationsDbContext dbContext, ILogger<MissedCallsService> logger)
     {
-        _httpClientFactory = httpClientFactory;
+        _dbContext = dbContext;
         _logger = logger;
     }
 
@@ -18,42 +20,30 @@ public class MissedCallsService : IMissedCallsService
     {
         try
         {
-            var client = _httpClientFactory.CreateClient("MissedCallsAPI");
-            
-            _logger.LogInformation("Fetching missed calls from API: {BaseUrl}", client.BaseAddress);
-            
-            var response = await client.GetAsync($"/api/MissedCalls/view?limit={limit}", cancellationToken);
-            
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Failed to fetch missed calls. Status: {StatusCode}", response.StatusCode);
-                return null;
-            }
+            var calls = await _dbContext.NotifierCallsStaging
+                .OrderByDescending(c => c.DateAndTime)
+                .Take(limit)
+                .Select(c => new MissedCallDto
+                {
+                    Id = c.Id,
+                    DateAndTime = c.DateAndTime,
+                    PhoneNumber = c.PhoneNumber,
+                    StatusText = c.StatusText ?? "N/A"
+                })
+                .ToListAsync(cancellationToken);
 
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            var calls = JsonSerializer.Deserialize<List<MissedCallDto>>(content, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-
-            var list = calls ?? new List<MissedCallDto>();
-            _logger.LogInformation("Retrieved {Count} missed calls", list.Count);
+            _logger.LogInformation("Retrieved {Count} calls from NotifierCalls_Staging", calls.Count);
 
             return new MissedCallsResponse
             {
                 Success = true,
-                Count = list.Count,
-                Data = list
+                Count = calls.Count,
+                Data = calls
             };
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "HTTP request failed when fetching missed calls");
-            return null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error fetching missed calls");
+            _logger.LogError(ex, "Error fetching calls from NotifierCalls_Staging");
             return null;
         }
     }
@@ -62,36 +52,36 @@ public class MissedCallsService : IMissedCallsService
     {
         try
         {
-            var client = _httpClientFactory.CreateClient("MissedCallsAPI");
-            
-            _logger.LogInformation("Fetching missed calls stats from API");
-            
-            var response = await client.GetAsync("/api/MissedCalls/stats", cancellationToken);
-            
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Failed to fetch missed calls stats. Status: {StatusCode}", response.StatusCode);
-                return null;
-            }
+            var now = DateTime.UtcNow;
+            var today = now.Date;
+            var weekStart = today.AddDays(-(int)today.DayOfWeek);
 
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            var result = JsonSerializer.Deserialize<MissedCallsStatsResponse>(content, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-
-            _logger.LogInformation("Retrieved missed calls stats");
+            var total = await _dbContext.NotifierCallsStaging.CountAsync(cancellationToken);
+            var todayCount = await _dbContext.NotifierCallsStaging
+                .CountAsync(c => c.DateAndTime >= today, cancellationToken);
+            var weekCount = await _dbContext.NotifierCallsStaging
+                .CountAsync(c => c.DateAndTime >= weekStart, cancellationToken);
             
-            return result;
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "HTTP request failed when fetching missed calls stats");
-            return null;
+            var lastCall = await _dbContext.NotifierCallsStaging
+                .OrderByDescending(c => c.DateAndTime)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return new MissedCallsStatsResponse
+            {
+                TotalMissedCalls = total,
+                TodayMissedCalls = todayCount,
+                ThisWeekMissedCalls = weekCount,
+                LastMissedCall = lastCall != null ? new
+                {
+                    id = lastCall.Id,
+                    dateAndTime = lastCall.DateAndTime,
+                    phoneNumber = lastCall.PhoneNumber
+                } : null
+            };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error fetching missed calls stats");
+            _logger.LogError(ex, "Error fetching calls stats");
             return null;
         }
     }
@@ -100,9 +90,7 @@ public class MissedCallsService : IMissedCallsService
     {
         try
         {
-            var client = _httpClientFactory.CreateClient("MissedCallsAPI");
-            var response = await client.GetAsync("/api/MissedCalls/test");
-            return response.IsSuccessStatusCode;
+            return await _dbContext.Database.CanConnectAsync();
         }
         catch
         {

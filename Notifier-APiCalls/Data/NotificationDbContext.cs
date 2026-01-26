@@ -18,7 +18,7 @@ namespace NotifierAPI.Data
 
             modelBuilder.Entity<IncomingCall>(entity =>
             {
-                entity.ToTable("IncomingCall", "dbo");
+                entity.ToTable("NotifierIncomingCalls", "dbo");
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.DateAndTime).HasColumnType("datetime2");
                 entity.Property(e => e.PhoneNumber).HasMaxLength(50);
