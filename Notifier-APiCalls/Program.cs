@@ -61,7 +61,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("SignalRCors", policy =>
     {
         policy
-            .WithOrigins("http://localhost:5080") // Origen de Razor Pages
+            .WithOrigins("http://localhost:5080", "http://localhost") // Razor Pages y Desktop
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials(); // Requerido para SignalR

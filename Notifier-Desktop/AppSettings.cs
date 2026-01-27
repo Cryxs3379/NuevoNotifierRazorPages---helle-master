@@ -7,6 +7,9 @@ public class AppSettings
     // URL fija de la API - no configurable
     public const string ApiBaseUrl = "http://localhost:5080";
     
+    // URL del hub SignalR de Notifier-APiCalls (para eventos de llamadas)
+    public const string CallsApiBaseUrl = "http://localhost:5001";
+    
     public string OperatorName { get; set; } = Environment.UserName;
 
     private static readonly string SettingsPath = Path.Combine(

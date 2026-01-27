@@ -15,8 +15,14 @@ public partial class MainForm : Form
     private readonly AppSettings _settings;
     private ApiClient? _apiClient;
     private SignalRService? _signalRService;
+    private SignalRService? _callsSignalRService; // Conexión separada para eventos de llamadas desde Notifier-APiCalls
     private ConversationsController? _conversationsController;
     private ChatController? _chatController;
+    
+    // Debounce para refresco de llamadas perdidas
+    private System.Threading.Timer? _missedCallsRefreshTimer;
+    private bool _missedCallsRefreshPending = false;
+    private bool _missedCallsRefreshInProgress = false;
 
     // UI Controls
     private TextBox _txtSearch;
@@ -415,6 +421,10 @@ public partial class MainForm : Form
     {
         _apiClient = new ApiClient(AppSettings.ApiBaseUrl);
         _signalRService = new SignalRService(AppSettings.ApiBaseUrl);
+        
+        // Conexión separada para eventos de llamadas desde Notifier-APiCalls
+        _callsSignalRService = new SignalRService(AppSettings.CallsApiBaseUrl);
+        
         _conversationsController = new ConversationsController(_apiClient, _signalRService);
         _chatController = new ChatController(_apiClient);
 
@@ -430,6 +440,13 @@ public partial class MainForm : Form
             _signalRService.OnConnected += SignalRService_OnConnected;
             _signalRService.OnDisconnected += SignalRService_OnDisconnected;
             _signalRService.OnReconnecting += SignalRService_OnReconnecting;
+        }
+
+        if (_callsSignalRService != null)
+        {
+            _callsSignalRService.OnCallViewsUpdated += CallsSignalRService_OnCallViewsUpdated;
+            _callsSignalRService.OnConnected += () => System.Diagnostics.Debug.WriteLine("[SignalR Calls] Connected to Notifier-APiCalls");
+            _callsSignalRService.OnDisconnected += () => System.Diagnostics.Debug.WriteLine("[SignalR Calls] Disconnected from Notifier-APiCalls");
         }
 
         Load += (s, e) => { InitializeAsync().GetAwaiter(); };
@@ -739,6 +756,62 @@ public partial class MainForm : Form
         _ = Task.Run(async () => { await LoadMissedCallsAsync(); });
     }
 
+    private void CallsSignalRService_OnCallViewsUpdated()
+    {
+        if (InvokeRequired)
+        {
+            Invoke(new Action(() => CallsSignalRService_OnCallViewsUpdated()));
+            return;
+        }
+
+        System.Diagnostics.Debug.WriteLine("[SignalR Calls] CallViewsUpdated received, scheduling refresh");
+        
+        // Debounce: si ya hay un refresh en curso, marcar como pending
+        if (_missedCallsRefreshInProgress)
+        {
+            _missedCallsRefreshPending = true;
+            System.Diagnostics.Debug.WriteLine("[SignalR Calls] Refresh already in progress, marked as pending");
+            return;
+        }
+
+        // Cancelar timer anterior si existe
+        _missedCallsRefreshTimer?.Dispose();
+        
+        // Crear nuevo timer con debounce de 500ms
+        _missedCallsRefreshTimer = new System.Threading.Timer(async _ =>
+        {
+            if (_missedCallsRefreshInProgress)
+            {
+                _missedCallsRefreshPending = true;
+                return;
+            }
+
+            _missedCallsRefreshInProgress = true;
+            _missedCallsRefreshPending = false;
+
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("[SignalR Calls] Executing debounced refresh");
+                await LoadMissedCallsAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SignalR Calls] Error refreshing missed calls: {ex.Message}");
+            }
+            finally
+            {
+                _missedCallsRefreshInProgress = false;
+                
+                // Si había un refresh pendiente, ejecutarlo ahora
+                if (_missedCallsRefreshPending)
+                {
+                    _missedCallsRefreshPending = false;
+                    _ = Task.Run(async () => { await LoadMissedCallsAsync(); });
+                }
+            }
+        }, null, TimeSpan.FromMilliseconds(500), Timeout.InfiniteTimeSpan);
+    }
+
     private async Task LoadMissedCallsAsync()
     {
         if (_apiClient == null) return;
@@ -942,7 +1015,9 @@ public partial class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        _missedCallsRefreshTimer?.Dispose();
         _signalRService?.Dispose();
+        _callsSignalRService?.Dispose();
         _apiClient?.Dispose();
         base.OnFormClosing(e);
     }
