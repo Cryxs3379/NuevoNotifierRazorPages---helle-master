@@ -284,7 +284,7 @@ namespace NotifierAPI.Controllers
         }
 
         /// <summary>
-        /// Obtiene llamadas perdidas desde la vista vw_MissedCalls_WithClientName
+        /// Obtiene llamadas perdidas desde la vista vw_Incoming_NoAtendidas_24h_ConCliente
         /// </summary>
         /// <param name="limit">Número máximo de registros a devolver (default: 200, max: 500)</param>
         /// <returns>Lista de llamadas perdidas con información del cliente</returns>
@@ -297,21 +297,22 @@ namespace NotifierAPI.Controllers
                 if (limit < 1) limit = 200;
                 if (limit > 500) limit = 500;
 
-                // Consultar desde la vista
-                var calls = await _context.MissedCallsWithClientName
+                // Consultar desde la vista vw_Incoming_NoAtendidas_24h_ConCliente
+                var calls = await _context.IncomingNoAtendidas24h
+                    .AsNoTracking()
                     .OrderByDescending(c => c.DateAndTime)
                     .Take(limit)
                     .ToListAsync();
 
-                // Convertir a DTO y aplicar conversión de timezone
+                // Convertir a DTO y aplicar conversión de timezone a hora España
                 var dtos = calls.Select(c => new MissedCallWithClientNameDto
                 {
                     Id = c.Id,
                     DateAndTime = ToSpainTime(c.DateAndTime),
                     PhoneNumber = c.PhoneNumber,
-                    NombrePila = c.NombrePila,
-                    NombreCompleto = c.NombreCompleto,
-                    AnswerCall = c.AnswerCall
+                    NombrePila = c.NombrePila ?? "",
+                    NombreCompleto = c.NombreCompleto ?? "",
+                    AnswerCall = null // Esta vista no tiene AnswerCall
                 }).ToList();
 
                 return Ok(dtos);

@@ -106,14 +106,13 @@ public class CallsIngestBackgroundService : BackgroundService
         try
         {
             Directory.CreateDirectory(_settings.WatchPath);
-            Directory.CreateDirectory(_settings.ProcessedPath);
-            Directory.CreateDirectory(_settings.ErrorPath);
-            _logger.LogInformation("Directorios verificados/creados: Watch={Watch}, Processed={Processed}, Error={Error}",
-                _settings.WatchPath, _settings.ProcessedPath, _settings.ErrorPath);
+            // ProcessedPath y ErrorPath ya no se usan, pero se mantienen opcionales por compatibilidad
+            // No se crean automáticamente para evitar carpetas innecesarias
+            _logger.LogInformation("Directorio WatchPath verificado/creado: {WatchPath}", _settings.WatchPath);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creando directorios");
+            _logger.LogError(ex, "Error creando directorio WatchPath");
         }
     }
 
@@ -170,13 +169,14 @@ public class CallsIngestBackgroundService : BackgroundService
             return;
         }
 
+        var fileName = Path.GetFileName(fullPath);
         if (_queue.Writer.TryWrite(fullPath))
         {
-            _logger.LogInformation("Archivo encolado para procesamiento: {FilePath}", fullPath);
+            _logger.LogInformation("Detectado archivo: {FileName}", fileName);
         }
         else
         {
-            _logger.LogWarning("No se pudo encolar el archivo (cola cerrada): {FilePath}", fullPath);
+            _logger.LogWarning("No se pudo encolar el archivo (cola cerrada): {FileName}", fileName);
         }
     }
 
@@ -214,18 +214,21 @@ public class CallsIngestBackgroundService : BackgroundService
             var dbContext = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
             var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<MessagesHub>>();
 
-            // Verificar si ya fue procesado
+            // Verificar si ya fue procesado (anti-reprocesado robusto)
             if (await IsAlreadyProcessedAsync(dbContext, fileName, stoppingToken))
             {
-                _logger.LogInformation("Archivo saltado (ya procesado): {FileName}", fileName);
+                _logger.LogInformation("Saltando (ya procesado): {FileName}", fileName);
                 return;
             }
 
             // Leer archivo con reintentos
             var rows = await ReadFileWithRetryAsync(fullPath, stoppingToken);
+            
+            // Si el archivo está vacío o sin filas válidas, registrar como procesado para evitar reintentos infinitos
             if (rows.Count == 0)
             {
-                _logger.LogInformation("Archivo sin filas válidas: {FileName}", fileName);
+                _logger.LogInformation("Archivo sin filas válidas: {FileName}. Registrando como procesado para evitar reintentos", fileName);
+                await MarkFileAsProcessedAsync(dbContext, fileName, stoppingToken);
                 return;
             }
 
@@ -234,7 +237,7 @@ public class CallsIngestBackgroundService : BackgroundService
             
             if (insertedCalls.Count > 0)
             {
-                _logger.LogInformation("✅ Insertadas {RowCount} filas desde {FileName}", insertedCalls.Count, fileName);
+                _logger.LogInformation("Procesado OK: {FileName} (insertadas {RowCount} filas)", fileName, insertedCalls.Count);
                 
                 // Emitir eventos SignalR usando estrategia híbrida según tamaño
                 try
@@ -282,16 +285,31 @@ public class CallsIngestBackgroundService : BackgroundService
             }
             else
             {
-                _logger.LogWarning("⚠️ No se insertaron filas desde {FileName} (insertedCalls.Count=0)", fileName);
+                // No se insertaron filas (puede pasar si todas las filas eran inválidas o duplicadas)
+                // Registrar como procesado para evitar reintentos infinitos
+                _logger.LogWarning("⚠️ No se insertaron filas desde {FileName} (insertedCalls.Count=0). Registrando como procesado", fileName);
+                await MarkFileAsProcessedAsync(dbContext, fileName, stoppingToken);
             }
 
-            // Mover a Processed (opcional, como en el original no se movía, pero lo dejamos)
-            MoveToProcessed(fullPath, fileName);
+            // Archivo procesado exitosamente - NO se mueve, se deja en WatchPath
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error procesando archivo {FileName}", fileName);
-            MoveToError(fullPath, fileName);
+            // Error procesando archivo - NO se mueve, se deja en WatchPath y se registra el error
+            _logger.LogError(ex, "Error procesando archivo {FileName}: {ErrorMessage}. El archivo permanece en la carpeta raíz.", 
+                fileName, ex.Message);
+            
+            // Registrar el error en la BD para evitar reprocesar archivos que fallaron
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
+                await MarkFileAsProcessedWithErrorAsync(dbContext, fileName, ex.Message, stoppingToken);
+            }
+            catch (Exception markEx)
+            {
+                _logger.LogWarning(markEx, "No se pudo registrar el error del archivo {FileName} en la BD", fileName);
+            }
         }
     }
 
@@ -375,6 +393,9 @@ public class CallsIngestBackgroundService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Verifica si un archivo ya fue procesado consultando NotifierCalls_Staging por SourceFile.
+    /// </summary>
     private async Task<bool> IsAlreadyProcessedAsync(
         NotificationDbContext dbContext, 
         string fileName, 
@@ -382,6 +403,70 @@ public class CallsIngestBackgroundService : BackgroundService
     {
         return await dbContext.NotifierCallsStaging
             .AnyAsync(c => c.SourceFile == fileName, stoppingToken);
+    }
+
+    /// <summary>
+    /// Marca un archivo como procesado insertando una fila "marcador" en staging.
+    /// Se usa para archivos vacíos o sin filas válidas para evitar reintentos infinitos.
+    /// </summary>
+    private async Task MarkFileAsProcessedAsync(
+        NotificationDbContext dbContext,
+        string fileName,
+        CancellationToken stoppingToken)
+    {
+        try
+        {
+            // Insertar una fila marcador con valores especiales para indicar que el archivo fue procesado pero estaba vacío
+            var markerRow = new NotifierCallsStaging
+            {
+                DateAndTime = DateTime.UtcNow,
+                PhoneNumber = "[ARCHIVO_VACIO]",
+                StatusText = "[PROCESADO_SIN_FILAS]",
+                SourceFile = fileName,
+                LoadedAt = DateTime.UtcNow
+            };
+
+            dbContext.NotifierCallsStaging.Add(markerRow);
+            await dbContext.SaveChangesAsync(stoppingToken);
+            
+            _logger.LogDebug("Archivo {FileName} marcado como procesado (sin filas válidas)", fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No se pudo marcar el archivo {FileName} como procesado", fileName);
+        }
+    }
+
+    /// <summary>
+    /// Marca un archivo como procesado con error para evitar reintentos infinitos.
+    /// </summary>
+    private async Task MarkFileAsProcessedWithErrorAsync(
+        NotificationDbContext dbContext,
+        string fileName,
+        string errorMessage,
+        CancellationToken stoppingToken)
+    {
+        try
+        {
+            // Insertar una fila marcador con el error para indicar que el archivo falló al procesarse
+            var errorRow = new NotifierCallsStaging
+            {
+                DateAndTime = DateTime.UtcNow,
+                PhoneNumber = "[ERROR]",
+                StatusText = $"[ERROR_PROCESAMIENTO: {errorMessage}]",
+                SourceFile = fileName,
+                LoadedAt = DateTime.UtcNow
+            };
+
+            dbContext.NotifierCallsStaging.Add(errorRow);
+            await dbContext.SaveChangesAsync(stoppingToken);
+            
+            _logger.LogDebug("Archivo {FileName} marcado como procesado con error para evitar reintentos", fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No se pudo marcar el archivo {FileName} como procesado con error", fileName);
+        }
     }
 
     private async Task<List<NotifierRow>> ReadFileWithRetryAsync(
@@ -584,45 +669,6 @@ public class CallsIngestBackgroundService : BackgroundService
         return insertedCalls;
     }
 
-    private void MoveToProcessed(string fullPath, string fileName)
-    {
-        try
-        {
-            var destPath = Path.Combine(_settings.ProcessedPath, fileName);
-            if (File.Exists(destPath))
-            {
-                var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-                var nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
-                var ext = Path.GetExtension(fileName);
-                destPath = Path.Combine(_settings.ProcessedPath, $"{nameWithoutExt}_{timestamp}{ext}");
-            }
-            File.Move(fullPath, destPath, overwrite: true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "No se pudo mover archivo a Processed: {FileName}", fileName);
-        }
-    }
-
-    private void MoveToError(string fullPath, string fileName)
-    {
-        try
-        {
-            var destPath = Path.Combine(_settings.ErrorPath, fileName);
-            if (File.Exists(destPath))
-            {
-                var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-                var nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
-                var ext = Path.GetExtension(fileName);
-                destPath = Path.Combine(_settings.ErrorPath, $"{nameWithoutExt}_{timestamp}{ext}");
-            }
-            File.Move(fullPath, destPath, overwrite: true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "No se pudo mover archivo a Error: {FileName}", fileName);
-        }
-    }
 
     private sealed record NotifierRow(
         DateTime DateAndTime, 

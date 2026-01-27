@@ -10,7 +10,7 @@ namespace NotifierAPI.Data
         }
 
         public DbSet<IncomingCall> IncomingCalls { get; set; }
-        public DbSet<MissedCallWithClientNameRow> MissedCallsWithClientName { get; set; }
+        // MissedCallsWithClientName eliminado - se usa IncomingNoAtendidas24h en su lugar
         public DbSet<NotifierCallsStaging> NotifierCallsStaging { get; set; }
         public DbSet<Outgoing24hRow> Outgoing24h { get; set; }
         public DbSet<IncomingNoAtendidas24hRow> IncomingNoAtendidas24h { get; set; }
@@ -24,15 +24,6 @@ namespace NotifierAPI.Data
             {
                 entity.ToTable("NotifierIncomingCalls", "dbo");
                 entity.HasKey(e => e.Id);
-                entity.Property(e => e.DateAndTime).HasColumnType("datetime2");
-                entity.Property(e => e.PhoneNumber).HasMaxLength(50);
-            });
-
-            // Vista keyless para vw_MissedCalls_WithClientName
-            modelBuilder.Entity<MissedCallWithClientNameRow>(entity =>
-            {
-                entity.HasNoKey();
-                entity.ToView("vw_MissedCalls_WithClientName", "dbo");
                 entity.Property(e => e.DateAndTime).HasColumnType("datetime2");
                 entity.Property(e => e.PhoneNumber).HasMaxLength(50);
             });
