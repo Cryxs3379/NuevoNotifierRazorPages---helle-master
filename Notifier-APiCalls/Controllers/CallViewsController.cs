@@ -9,9 +9,6 @@ namespace NotifierAPI.Controllers;
 [Route("api/v1/calls/views")]
 public class CallViewsController : ControllerBase
 {
-    private static readonly TimeZoneInfo SpainTimeZone =
-        TimeZoneInfo.FindSystemTimeZoneById("Romance Standard Time");
-
     private readonly NotificationDbContext _context;
     private readonly ILogger<CallViewsController> _logger;
 
@@ -21,55 +18,6 @@ public class CallViewsController : ControllerBase
         _logger = logger;
     }
 
-    private DateTime ToSpainTime(DateTime utcDate)
-    {
-        if (utcDate.Kind == DateTimeKind.Unspecified)
-        {
-            utcDate = DateTime.SpecifyKind(utcDate, DateTimeKind.Utc);
-        }
-        else if (utcDate.Kind == DateTimeKind.Local)
-        {
-            utcDate = utcDate.ToUniversalTime();
-        }
-
-        return TimeZoneInfo.ConvertTimeFromUtc(utcDate, SpainTimeZone);
-    }
-
-    private CallWithClientDto MapToDto(Outgoing24hRow row)
-    {
-        return new CallWithClientDto
-        {
-            Id = row.Id,
-            DateAndTime = ToSpainTime(row.DateAndTime),
-            PhoneNumber = row.PhoneNumber,
-            NombreCompleto = row.NombreCompleto ?? "",
-            NombrePila = row.NombrePila ?? ""
-        };
-    }
-
-    private CallWithClientDto MapToDto(IncomingNoAtendidas24hRow row)
-    {
-        return new CallWithClientDto
-        {
-            Id = row.Id,
-            DateAndTime = ToSpainTime(row.DateAndTime),
-            PhoneNumber = row.PhoneNumber,
-            NombreCompleto = row.NombreCompleto ?? "",
-            NombrePila = row.NombrePila ?? ""
-        };
-    }
-
-    private CallWithClientDto MapToDto(IncomingAtendidas24hRow row)
-    {
-        return new CallWithClientDto
-        {
-            Id = row.Id,
-            DateAndTime = ToSpainTime(row.DateAndTime),
-            PhoneNumber = row.PhoneNumber,
-            NombreCompleto = row.NombreCompleto ?? "",
-            NombrePila = row.NombrePila ?? ""
-        };
-    }
 
     [HttpGet("outgoing-24h")]
     public async Task<ActionResult<List<CallWithClientDto>>> GetOutgoing24h(CancellationToken cancellationToken = default)
@@ -78,12 +26,19 @@ public class CallViewsController : ControllerBase
         {
             _logger.LogInformation("📞 Obteniendo llamadas salientes 24h");
 
-            var calls = await _context.Outgoing24h
+            var result = await _context.Outgoing24h
+                .AsNoTracking()
                 .OrderByDescending(c => c.DateAndTime)
                 .Take(200)
+                .Select(c => new CallWithClientDto
+                {
+                    Id = c.Id,
+                    DateAndTime = c.DateAndTime, // UTC, navegador formatea
+                    PhoneNumber = c.PhoneNumber,
+                    NombreCompleto = c.NombreCompleto ?? "",
+                    NombrePila = c.NombrePila ?? ""
+                })
                 .ToListAsync(cancellationToken);
-
-            var result = calls.Select(MapToDto).ToList();
 
             _logger.LogInformation("✅ Retornadas {Count} llamadas salientes 24h", result.Count);
             return Ok(result);
@@ -102,12 +57,19 @@ public class CallViewsController : ControllerBase
         {
             _logger.LogInformation("📞 Obteniendo llamadas entrantes NO atendidas 24h");
 
-            var calls = await _context.IncomingNoAtendidas24h
+            var result = await _context.IncomingNoAtendidas24h
+                .AsNoTracking()
                 .OrderByDescending(c => c.DateAndTime)
                 .Take(200)
+                .Select(c => new CallWithClientDto
+                {
+                    Id = c.Id,
+                    DateAndTime = c.DateAndTime, // UTC, navegador formatea
+                    PhoneNumber = c.PhoneNumber,
+                    NombreCompleto = c.NombreCompleto ?? "",
+                    NombrePila = c.NombrePila ?? ""
+                })
                 .ToListAsync(cancellationToken);
-
-            var result = calls.Select(MapToDto).ToList();
 
             _logger.LogInformation("✅ Retornadas {Count} llamadas entrantes NO atendidas 24h", result.Count);
             return Ok(result);
@@ -126,12 +88,19 @@ public class CallViewsController : ControllerBase
         {
             _logger.LogInformation("📞 Obteniendo llamadas entrantes atendidas 24h");
 
-            var calls = await _context.IncomingAtendidas24h
+            var result = await _context.IncomingAtendidas24h
+                .AsNoTracking()
                 .OrderByDescending(c => c.DateAndTime)
                 .Take(200)
+                .Select(c => new CallWithClientDto
+                {
+                    Id = c.Id,
+                    DateAndTime = c.DateAndTime, // UTC, navegador formatea
+                    PhoneNumber = c.PhoneNumber,
+                    NombreCompleto = c.NombreCompleto ?? "",
+                    NombrePila = c.NombrePila ?? ""
+                })
                 .ToListAsync(cancellationToken);
-
-            var result = calls.Select(MapToDto).ToList();
 
             _logger.LogInformation("✅ Retornadas {Count} llamadas entrantes atendidas 24h", result.Count);
             return Ok(result);

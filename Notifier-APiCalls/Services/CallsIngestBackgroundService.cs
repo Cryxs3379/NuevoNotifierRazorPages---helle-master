@@ -43,6 +43,14 @@ public class CallsIngestBackgroundService : BackgroundService
     private readonly Channel<string> _queue;
     private readonly ConcurrentDictionary<string, byte> _inFlight;
     private FileSystemWatcher? _watcher;
+    
+    // Semaphore para evitar ejecuciones paralelas del SP
+    private readonly SemaphoreSlim _spExecutionSemaphore = new SemaphoreSlim(1, 1);
+    
+    // Timer para debounce de ejecución del SP
+    private Timer? _spDebounceTimer;
+    private readonly object _spDebounceLock = new object();
+    private bool _spExecutionPending = false;
 
     public CallsIngestBackgroundService(
         IOptions<CallsIngestSettings> settings,
@@ -228,41 +236,49 @@ public class CallsIngestBackgroundService : BackgroundService
             {
                 _logger.LogInformation("✅ Insertadas {RowCount} filas desde {FileName}", insertedCalls.Count, fileName);
                 
-                // Emitir eventos SignalR para cada llamada nueva
+                // Emitir eventos SignalR usando estrategia híbrida según tamaño
                 try
                 {
-                    _logger.LogInformation("📡 Iniciando emisión de eventos SignalR para {Count} llamadas", insertedCalls.Count);
+                    int batchThreshold = 5; // Umbral para decidir estrategia
                     
-                    foreach (var call in insertedCalls)
+                    if (insertedCalls.Count <= batchThreshold)
                     {
-                        // Convertir fecha a zona horaria de España (como en el controller)
-                        var spainTime = TimeZoneHelper.ToSpainTime(call.DateAndTime);
+                        // Estrategia granular: emitir NewMissedCall individual por cada fila
+                        _logger.LogInformation("📡 Emitiendo {Count} eventos NewMissedCall individuales (archivo pequeño)", insertedCalls.Count);
                         
-                        _logger.LogInformation("📤 Emitiendo NewMissedCall: Id={Id}, Phone={Phone}, Date={Date}", 
-                            call.Id, call.PhoneNumber, spainTime);
-                        
-                        await hubContext.Clients.All.SendAsync("NewMissedCall", new
+                        foreach (var call in insertedCalls)
                         {
-                            id = call.Id,
-                            dateAndTime = spainTime,
-                            phoneNumber = call.PhoneNumber,
-                            statusText = call.StatusText ?? "N/A",
-                            sourceFile = call.SourceFile,
-                            loadedAt = call.LoadedAt
-                        }, cancellationToken: stoppingToken);
+                            // Convertir fecha a zona horaria de España (como en el controller)
+                            var spainTime = TimeZoneHelper.ToSpainTime(call.DateAndTime);
+                            
+                            await hubContext.Clients.All.SendAsync("NewMissedCall", new
+                            {
+                                id = call.Id,
+                                dateAndTime = spainTime,
+                                phoneNumber = call.PhoneNumber,
+                                statusText = call.StatusText ?? "N/A",
+                                sourceFile = call.SourceFile,
+                                loadedAt = call.LoadedAt
+                            }, cancellationToken: stoppingToken);
+                        }
                         
-                        _logger.LogInformation("✅ NewMissedCall emitido OK: Id={Id}", call.Id);
+                        _logger.LogInformation("✅ {Count} eventos NewMissedCall emitidos OK", insertedCalls.Count);
                     }
-                    
-                    // También emitir CallsUpdated como fallback/compatibilidad
-                    _logger.LogInformation("📤 Emitiendo CallsUpdated (fallback)");
-                    await hubContext.Clients.All.SendAsync("CallsUpdated", cancellationToken: stoppingToken);
-                    _logger.LogInformation("✅ CallsUpdated emitido OK");
+                    else
+                    {
+                        // Estrategia batch: solo CallsUpdated para evitar spam
+                        _logger.LogInformation("📡 Emitiendo CallsUpdated (archivo grande con {Count} filas)", insertedCalls.Count);
+                        await hubContext.Clients.All.SendAsync("CallsUpdated", cancellationToken: stoppingToken);
+                        _logger.LogInformation("✅ CallsUpdated emitido OK");
+                    }
                 }
                 catch (Exception signalREx)
                 {
                     _logger.LogError(signalREx, "❌ Error emitiendo eventos SignalR");
                 }
+
+                // Programar ejecución del SP con debounce (una sola vez por archivo)
+                ScheduleStoredProcedureExecution(hubContext, stoppingToken);
             }
             else
             {
@@ -276,6 +292,86 @@ public class CallsIngestBackgroundService : BackgroundService
         {
             _logger.LogError(ex, "Error procesando archivo {FileName}", fileName);
             MoveToError(fullPath, fileName);
+        }
+    }
+
+    // Programar ejecución del SP con debounce (espera 2-3 segundos antes de ejecutar)
+    private void ScheduleStoredProcedureExecution(IHubContext<MessagesHub> hubContext, CancellationToken cancellationToken)
+    {
+        lock (_spDebounceLock)
+        {
+            // Marcar que hay una ejecución pendiente
+            _spExecutionPending = true;
+
+            // Cancelar timer anterior si existe
+            _spDebounceTimer?.Dispose();
+
+            // Crear nuevo timer que ejecutará el SP después de 2.5 segundos de inactividad
+            _spDebounceTimer = new Timer(async _ =>
+            {
+                lock (_spDebounceLock)
+                {
+                    if (!_spExecutionPending)
+                    {
+                        return; // Ya se ejecutó o se canceló
+                    }
+                    _spExecutionPending = false;
+                }
+
+                // Ejecutar el SP de forma asíncrona
+                _ = Task.Run(async () =>
+                {
+                    await ExecuteStoredProcedureAsync(hubContext, cancellationToken);
+                }, cancellationToken);
+            }, null, TimeSpan.FromSeconds(2.5), Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    // Ejecutar el stored procedure ProcessNotifierCalls de forma segura (una sola vez a la vez)
+    private async Task ExecuteStoredProcedureAsync(IHubContext<MessagesHub> hubContext, CancellationToken cancellationToken)
+    {
+        // Usar SemaphoreSlim para garantizar que solo se ejecuta una vez a la vez
+        if (!await _spExecutionSemaphore.WaitAsync(0, cancellationToken))
+        {
+            _logger.LogWarning("⚠️ ProcessNotifierCalls ya está en ejecución, saltando esta ejecución");
+            return;
+        }
+
+        try
+        {
+            _logger.LogInformation("🔄 Ejecutando ProcessNotifierCalls...");
+            var startTime = DateTime.UtcNow;
+
+            using var scope = _serviceProvider.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
+
+            // Ejecutar el stored procedure
+            await dbContext.Database.ExecuteSqlRawAsync(
+                "EXEC dbo.ProcessNotifierCalls",
+                cancellationToken);
+
+            var duration = (DateTime.UtcNow - startTime).TotalMilliseconds;
+            _logger.LogInformation("✅ ProcessNotifierCalls completado en {Duration} ms", duration);
+
+            // Emitir evento SignalR para actualizar vistas 24h
+            try
+            {
+                await hubContext.Clients.All.SendAsync("CallViewsUpdated", cancellationToken: cancellationToken);
+                _logger.LogInformation("✅ CallViewsUpdated emitido OK");
+            }
+            catch (Exception signalREx)
+            {
+                _logger.LogError(signalREx, "❌ Error emitiendo CallViewsUpdated");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Error ejecutando ProcessNotifierCalls");
+            // No emitir CallViewsUpdated si el SP falla
+        }
+        finally
+        {
+            _spExecutionSemaphore.Release();
         }
     }
 
@@ -533,4 +629,12 @@ public class CallsIngestBackgroundService : BackgroundService
         string PhoneNumber, 
         string StatusText, 
         string SourceFile);
+
+    public override void Dispose()
+    {
+        _spDebounceTimer?.Dispose();
+        _spExecutionSemaphore?.Dispose();
+        _watcher?.Dispose();
+        base.Dispose();
+    }
 }

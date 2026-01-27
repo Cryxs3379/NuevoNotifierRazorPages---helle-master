@@ -424,15 +424,36 @@
                 </tr>`;
         }
 
-        // Función para refrescar llamadas parcialmente
+        // ============================================
+        // Debounce/Throttle para refrescos
+        // ============================================
+        let refreshTimeout = null;
+        let isRefreshing = false;
+        let pendingRefresh = false;
+
+        // Función para refrescar llamadas parcialmente (con protección contra múltiples ejecuciones)
         async function refreshCallsPartial() {
+            // Si ya hay un refresh en curso, marcar como pendiente
+            if (isRefreshing) {
+                pendingRefresh = true;
+                return;
+            }
+
+            isRefreshing = true;
             const tbody = document.getElementById('callsTableBody');
             const loadingRow = document.getElementById('loadingRow');
             const errorRow = document.getElementById('errorRow');
             const refreshBtn = document.getElementById('refreshCallsBtn');
             const refreshIcon = document.getElementById('refreshCallsIcon');
             
-            if (!tbody) return;
+            if (!tbody) {
+                isRefreshing = false;
+                if (pendingRefresh) {
+                    pendingRefresh = false;
+                    refreshCallsPartial();
+                }
+                return;
+            }
 
             // Ocultar error si existe
             if (errorRow) errorRow.style.display = 'none';
@@ -530,7 +551,24 @@
                 if (loadingRow) loadingRow.style.display = 'none';
                 if (refreshBtn) refreshBtn.disabled = false;
                 if (refreshIcon) refreshIcon.classList.remove('spinner-border', 'spinner-border-sm');
+                
+                // Marcar refresh como completado
+                isRefreshing = false;
+                
+                // Si hay un refresh pendiente, ejecutarlo ahora
+                if (pendingRefresh) {
+                    pendingRefresh = false;
+                    refreshCallsPartial();
+                }
             }
+        }
+
+        // Función debounced para refrescar llamadas (usa buffer de 500ms)
+        function debouncedRefreshCalls() {
+            clearTimeout(refreshTimeout);
+            refreshTimeout = setTimeout(() => {
+                refreshCallsPartial();
+            }, 500);
         }
 
         // SignalR Connection para actualizaciones en tiempo real
@@ -588,6 +626,7 @@
         // ============================================
         // Sistema de pestañas y carga bajo demanda
         // ============================================
+        const CACHE_TTL_MS = 30000; // 30 segundos
         let activeTab = 'historico';
         let tabDataCache = {
             outgoing24h: null,
@@ -595,6 +634,7 @@
             incomingOk24h: null
         };
         let newCallsCount = 0; // Contador de nuevas llamadas cuando no está en histórico
+        const abortControllers = {}; // AbortController por pestaña para cancelar requests
 
         // Escuchar evento NewMissedCall (actualización en tiempo real sin refresh)
         callsConnection.on("NewMissedCall", (call) => {
@@ -665,10 +705,36 @@
         callsConnection.on("CallsUpdated", () => {
             console.log("📨 CallsUpdated recibido via SignalR (fallback)");
             
-            // Solo usar como fallback si no llegó NewMissedCall
-            // En la práctica, si NewMissedCall funciona, este no debería ejecutarse
-            refreshCallsPartial();
+            // Usar debounce para evitar múltiples refrescos si llegan varios eventos seguidos
+            debouncedRefreshCalls();
         });
+
+        // Escuchar evento CallViewsUpdated (actualización de vistas 24h después de ProcessNotifierCalls)
+        callsConnection.on("CallViewsUpdated", () => {
+            console.log("📨 CallViewsUpdated recibido via SignalR");
+            
+            // Invalidar cache de las 3 vistas 24h
+            tabDataCache.outgoing24h = null;
+            tabDataCache.incomingNo24h = null;
+            tabDataCache.incomingOk24h = null;
+            
+            // Si la pestaña activa es una de las vistas 24h, refrescar con debounce
+            if (activeTab === 'outgoing24h' || activeTab === 'incomingNo24h' || activeTab === 'incomingOk24h') {
+                console.log(`🔄 Refrescando pestaña activa ${activeTab} después de CallViewsUpdated`);
+                debouncedRefreshActiveTab();
+            } else {
+                console.log(`ℹ️ CallViewsUpdated recibido pero pestaña activa es ${activeTab}, cache invalidado`);
+            }
+        });
+
+        // Función debounced para refrescar la pestaña activa
+        let refreshActiveTabTimeout = null;
+        function debouncedRefreshActiveTab() {
+            clearTimeout(refreshActiveTabTimeout);
+            refreshActiveTabTimeout = setTimeout(() => {
+                refreshActiveTab();
+            }, 500);
+        }
 
         // Iniciar conexión SignalR
         callsConnection.start()
@@ -703,7 +769,83 @@
         console.log("📍 ApiBaseUrl desde Model:", "@Model.ApiBaseUrl");
         console.log("📍 ApiBaseUrl normalizado:", apiBaseUrlForTabs);
 
-        // Función para renderizar una fila de las vistas (4 columnas)
+        // Función para renderizar el cuerpo de la tabla
+        function renderTableBody(tbody, data) {
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted"><i class="bi bi-inbox"></i> No hay datos disponibles</td></tr>';
+                return;
+            }
+
+            // Usar DocumentFragment para mejor rendimiento
+            const fragment = document.createDocumentFragment();
+            data.forEach(item => {
+                const row = createViewRowElement(item);
+                fragment.appendChild(row);
+            });
+
+            // Reemplazar todo el contenido de una vez
+            tbody.replaceChildren(fragment);
+        }
+
+        // Función para crear un elemento de fila DOM
+        function createViewRowElement(item) {
+            const tr = document.createElement('tr');
+            
+            // Normalizar camelCase vs PascalCase
+            const dateAndTime = item.dateAndTime ?? item.DateAndTime;
+            const phoneNumber = item.phoneNumber ?? item.PhoneNumber ?? 'N/A';
+            const nombreCompleto = item.nombreCompleto ?? item.NombreCompleto ?? 'N/A';
+            const nombrePila = item.nombrePila ?? item.NombrePila ?? 'N/A';
+
+            // Formatear fecha: dd/MM/yyyy HH:mm:ss (desde UTC, convertir a zona horaria España)
+            let dateStr = 'N/A';
+            if (dateAndTime) {
+                try {
+                    const date = new Date(dateAndTime);
+                    if (!isNaN(date.getTime())) {
+                        dateStr = date.toLocaleString('es-ES', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            timeZone: 'Europe/Madrid'
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Error formateando fecha:', dateAndTime, e);
+                }
+            }
+
+            // Crear celdas
+            const tdDate = document.createElement('td');
+            tdDate.textContent = dateStr;
+
+            const tdPhone = document.createElement('td');
+            const phoneSpan = document.createElement('span');
+            phoneSpan.className = 'phone-number';
+            const phoneIcon = document.createElement('i');
+            phoneIcon.className = 'bi bi-telephone-fill text-muted';
+            phoneSpan.appendChild(phoneIcon);
+            phoneSpan.appendChild(document.createTextNode(' ' + phoneNumber));
+            tdPhone.appendChild(phoneSpan);
+
+            const tdNombreCompleto = document.createElement('td');
+            tdNombreCompleto.textContent = nombreCompleto || 'N/A';
+
+            const tdNombrePila = document.createElement('td');
+            tdNombrePila.textContent = nombrePila || 'N/A';
+
+            tr.appendChild(tdDate);
+            tr.appendChild(tdPhone);
+            tr.appendChild(tdNombreCompleto);
+            tr.appendChild(tdNombrePila);
+
+            return tr;
+        }
+
+        // Función para renderizar una fila de las vistas (4 columnas) - Mantener para compatibilidad
         function renderViewRow(item) {
             // Normalizar camelCase vs PascalCase
             const dateAndTime = item.dateAndTime ?? item.DateAndTime;
@@ -711,19 +853,22 @@
             const nombreCompleto = item.nombreCompleto ?? item.NombreCompleto ?? 'N/A';
             const nombrePila = item.nombrePila ?? item.NombrePila ?? 'N/A';
 
-            // Formatear fecha: dd/MM/yyyy HH:mm:ss
+            // Formatear fecha: dd/MM/yyyy HH:mm:ss (desde UTC, convertir a zona horaria España)
             let dateStr = 'N/A';
             if (dateAndTime) {
                 try {
                     const date = new Date(dateAndTime);
                     if (!isNaN(date.getTime())) {
-                        const day = String(date.getDate()).padStart(2, '0');
-                        const month = String(date.getMonth() + 1).padStart(2, '0');
-                        const year = date.getFullYear();
-                        const hours = String(date.getHours()).padStart(2, '0');
-                        const minutes = String(date.getMinutes()).padStart(2, '0');
-                        const seconds = String(date.getSeconds()).padStart(2, '0');
-                        dateStr = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+                        // Usar toLocaleString con timezone España para formatear desde UTC
+                        dateStr = date.toLocaleString('es-ES', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            timeZone: 'Europe/Madrid' // Forzar zona horaria España
+                        });
                     }
                 } catch (e) {
                     console.warn('Error formateando fecha:', dateAndTime, e);
@@ -744,8 +889,51 @@
                 </tr>`;
         }
 
+        // Función para revalidar cache en background
+        async function revalidateInBackground(tabKey) {
+            // Esta función se llama cuando hay cache válido para revalidar silenciosamente
+            try {
+                let endpoint = '';
+                switch (tabKey) {
+                    case 'outgoing24h':
+                        endpoint = `${apiBaseUrlForTabs}/api/v1/calls/views/outgoing-24h`;
+                        break;
+                    case 'incomingNo24h':
+                        endpoint = `${apiBaseUrlForTabs}/api/v1/calls/views/incoming-noatendidas-24h`;
+                        break;
+                    case 'incomingOk24h':
+                        endpoint = `${apiBaseUrlForTabs}/api/v1/calls/views/incoming-atendidas-24h`;
+                        break;
+                    default:
+                        return;
+                }
+
+                const response = await fetch(endpoint);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (Array.isArray(data)) {
+                        // Actualizar cache si los datos cambiaron
+                        const cached = tabDataCache[tabKey];
+                        if (!cached || JSON.stringify(cached.data) !== JSON.stringify(data)) {
+                            tabDataCache[tabKey] = { data, fetchedAt: Date.now() };
+                            console.log(`🔄 Cache revalidado en background para ${tabKey}`);
+                        }
+                    }
+                }
+            } catch (error) {
+                // Silenciar errores en revalidación background
+                console.debug(`Revalidación background falló para ${tabKey}:`, error);
+            }
+        }
+
         // Función para cargar datos de una pestaña
-        async function loadTabData(tabKey) {
+        async function loadTabData(tabKey, forceRefresh = false) {
+            // Abortar request anterior si existe
+            if (abortControllers[tabKey]) {
+                abortControllers[tabKey].abort();
+                console.log(`🛑 Request anterior cancelado para ${tabKey}`);
+            }
+
             let endpoint = '';
             let tbodyId = '';
             let tabName = '';
@@ -777,15 +965,41 @@
                 return;
             }
 
-            // Mostrar loading
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div><p class="mt-2 text-muted">Cargando datos...</p></td></tr>';
+            // Verificar cache antes de hacer request
+            const cached = tabDataCache[tabKey];
+            const now = Date.now();
+
+            if (cached && !forceRefresh) {
+                const age = now - cached.fetchedAt;
+                if (age < CACHE_TTL_MS) {
+                    // Cache válido: mostrar instantáneamente y revalidar en background
+                    console.log(`⚡ Mostrando cache válido para ${tabName} (edad: ${Math.round(age/1000)}s)`);
+                    renderTableBody(tbody, cached.data);
+                    // Revalidar en background sin bloquear UI
+                    revalidateInBackground(tabKey);
+                    return;
+                } else {
+                    // Cache stale: mostrar cache mientras carga datos frescos
+                    console.log(`🔄 Cache stale para ${tabName}, mostrando cache y recargando...`);
+                    renderTableBody(tbody, cached.data);
+                }
+            }
+
+            // Crear nuevo AbortController para este request
+            const controller = new AbortController();
+            abortControllers[tabKey] = controller;
+
+            // Mostrar loading solo si no hay cache stale
+            if (!cached || forceRefresh) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div><p class="mt-2 text-muted">Cargando datos...</p></td></tr>';
+            }
 
             try {
                 console.log(`📡 Cargando tab ${tabName} (${tabKey})`);
                 console.log(`📍 URL: ${endpoint}`);
                 console.log(`🌐 ApiBaseUrl: ${apiBaseUrlForTabs}`);
                 
-                const response = await fetch(endpoint);
+                const response = await fetch(endpoint, { signal: controller.signal });
                 
                 console.log(`📊 HTTP Status: ${response.status} ${response.statusText}`);
                 console.log(`📋 Content-Type: ${response.headers.get('content-type') || 'N/A'}`);
@@ -821,18 +1035,19 @@
                     throw new Error('El servidor no devolvió un array de datos');
                 }
 
-                // Cachear datos
-                tabDataCache[tabKey] = data;
+                // Cachear datos con timestamp
+                tabDataCache[tabKey] = { data, fetchedAt: Date.now() };
 
                 // Renderizar filas
-                if (data && data.length > 0) {
-                    tbody.innerHTML = data.map(renderViewRow).join('');
-                    console.log(`✅ ${data.length} filas renderizadas en ${tabName}`);
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted"><i class="bi bi-inbox"></i> No hay datos disponibles</td></tr>';
-                    console.log(`ℹ️ No hay datos para ${tabName}`);
-                }
+                renderTableBody(tbody, data);
+                console.log(`✅ ${data.length} filas renderizadas en ${tabName}`);
             } catch (error) {
+                // Si el error es por cancelación, no mostrar error (fue cancelado intencionalmente)
+                if (error.name === 'AbortError') {
+                    console.log(`🛑 Request cancelado para ${tabName} (${tabKey})`);
+                    return; // Salir silenciosamente
+                }
+
                 console.error(`❌ Error cargando ${tabName} (${tabKey}):`, error);
                 console.error(`📍 Endpoint fallido: ${endpoint}`);
                 console.error(`🌐 ApiBaseUrl usado: ${apiBaseUrlForTabs}`);
@@ -870,9 +1085,8 @@
             if (activeTab === 'historico') {
                 refreshCallsPartial();
             } else {
-                // Limpiar cache para forzar recarga
-                tabDataCache[activeTab] = null;
-                loadTabData(activeTab);
+                // Forzar recarga limpiando cache
+                loadTabData(activeTab, true);
             }
         }
 
@@ -880,8 +1094,15 @@
         document.querySelectorAll('[data-tab-key]').forEach(tab => {
             tab.addEventListener('shown.bs.tab', function (e) {
                 const tabKey = e.target.getAttribute('data-tab-key');
+                const previousTab = activeTab;
                 activeTab = tabKey;
-                console.log(`📑 Pestaña activa cambiada a: ${tabKey}`);
+                console.log(`📑 Pestaña activa cambiada de ${previousTab} a ${tabKey}`);
+
+                // Cancelar requests pendientes de la pestaña anterior (si no es histórico)
+                if (previousTab && previousTab !== 'historico' && abortControllers[previousTab]) {
+                    abortControllers[previousTab].abort();
+                    console.log(`🛑 Requests cancelados para pestaña anterior: ${previousTab}`);
+                }
 
                 // Ocultar/mostrar filter bar solo para histórico
                 const filterBar = document.getElementById('historicoFilterBar');
