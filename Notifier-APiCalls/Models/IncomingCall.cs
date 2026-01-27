@@ -23,7 +23,7 @@ namespace NotifierAPI.Models
         public long? ClientCalledAgain { get; set; }
 
         [Column("Recall")]
-        public bool? Recall { get; set; }
+        public long? Recall { get; set; }
 
         [Column("RecalledAt")]
         public DateTime? RecalledAt { get; set; }
