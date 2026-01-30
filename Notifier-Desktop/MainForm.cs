@@ -661,6 +661,21 @@ public partial class MainForm : Form
         {
             ShowError($"Error al conectar SignalR: {ex.Message}");
         }
+
+        // Iniciar también la conexión SignalR para llamadas
+        if (_callsSignalRService != null)
+        {
+            try
+            {
+                await _callsSignalRService.StartAsync();
+                System.Diagnostics.Debug.WriteLine("[SignalR Calls] Connection started successfully");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SignalR Calls] Error connecting: {ex.Message}");
+                // No mostrar error al usuario, solo log
+            }
+        }
     }
 
     private void SignalRService_OnNewMessage(MessageDto message)
