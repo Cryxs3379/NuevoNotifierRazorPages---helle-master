@@ -126,7 +126,7 @@ namespace NotifierAPI.Controllers
                     return new
                     {
                         call.Id,
-                        DateAndTime = ToSpainTime(call.DateAndTime),
+                        DateAndTime = call.DateAndTime,
                         call.PhoneNumber,
                         call.Status,
                         call.ClientCalledAgain,
@@ -169,16 +169,15 @@ namespace NotifierAPI.Controllers
                     .Take(limit)
                     .ToListAsync();
 
-                var spainNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, SpainTimeZone);
+                var utcNow = DateTime.UtcNow;
 
                 var payload = calls.Select(call =>
                 {
-                    var spainTime = ToSpainTime(call.DateAndTime);
                     var statusInfo = GetStatusInfo(call.Status);
                     return new
                     {
                         call.Id,
-                        DateAndTime = spainTime,
+                        DateAndTime = call.DateAndTime,
                         call.PhoneNumber,
                         call.Status,
                         call.ClientCalledAgain,
@@ -186,7 +185,7 @@ namespace NotifierAPI.Controllers
                         IsMissedCall = statusInfo.IsMissed,
                         IsAnswered = statusInfo.IsAnswered,
                         StatusText = statusInfo.StatusText,
-                        TimeAgo = spainNow - spainTime
+                        TimeAgo = utcNow - call.DateAndTime
                     };
                 }).ToList();
 
@@ -231,7 +230,7 @@ namespace NotifierAPI.Controllers
                     LastMissedCall = lastMissedCall != null ? new
                     {
                         lastMissedCall.Id,
-                        DateAndTime = ToSpainTime(lastMissedCall.DateAndTime),
+                        DateAndTime = lastMissedCall.DateAndTime,
                         lastMissedCall.PhoneNumber
                     } : null
                 });
@@ -263,7 +262,7 @@ namespace NotifierAPI.Controllers
                 return new
                 {
                     call.Id,
-                    DateAndTime = ToSpainTime(call.DateAndTime),
+                    DateAndTime = call.DateAndTime,
                     call.PhoneNumber,
                     call.Status,
                     call.ClientCalledAgain,
@@ -304,11 +303,11 @@ namespace NotifierAPI.Controllers
                     .Take(limit)
                     .ToListAsync();
 
-                // Convertir a DTO y aplicar conversión de timezone a hora España
+                // Convertir a DTO sin conversión de timezone
                 var dtos = calls.Select(c => new MissedCallWithClientNameDto
                 {
                     Id = c.Id,
-                    DateAndTime = ToSpainTime(c.DateAndTime),
+                    DateAndTime = c.DateAndTime,
                     PhoneNumber = c.PhoneNumber,
                     NombrePila = c.NombrePila ?? "",
                     NombreCompleto = c.NombreCompleto ?? "",

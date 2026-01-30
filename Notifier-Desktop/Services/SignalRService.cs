@@ -22,6 +22,7 @@ public class SignalRService : IDisposable, IAsyncDisposable
     public event Action<string>? OnEsendexDeleteError;
     public event Action? OnMissedCallsUpdated;
     public event Action? OnCallViewsUpdated;
+    public event Action<object>? OnNewMissedCall;
     public event Action? OnConnected;
     public event Action? OnDisconnected;
     public event Action? OnReconnecting;
@@ -113,6 +114,14 @@ public class SignalRService : IDisposable, IAsyncDisposable
             Debug.WriteLine("[SignalR] CallViewsUpdated received");
 #endif
             OnCallViewsUpdated?.Invoke();
+        });
+
+        _connection.On<object>("NewMissedCall", (call) =>
+        {
+#if DEBUG
+            Debug.WriteLine($"[SignalR] NewMissedCall received: {call}");
+#endif
+            OnNewMissedCall?.Invoke(call);
         });
 
         _connection.Reconnecting += (error) =>

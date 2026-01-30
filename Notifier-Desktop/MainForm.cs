@@ -31,7 +31,7 @@ public partial class MainForm : Form
     private Label _lblSignalRStatus;
     private Label _lblOperator;
     private Label _lblError;
-
+    
     // Panel de Llamadas Perdidas
     private TabControl _tabControl;
     private TabPage _tabConversations;
@@ -45,7 +45,7 @@ public partial class MainForm : Form
 
     private string? _selectedPhone;
     private bool _isWindowFocused = true;
-
+    
     // Cache de controles de conversación para reutilización (optimización de performance)
     private readonly Dictionary<string, ConversationRowControl> _conversationControls = new();
     private ChatConversationForm? _chatForm;
@@ -65,7 +65,7 @@ public partial class MainForm : Form
         WindowState = FormWindowState.Maximized;
         FormBorderStyle = FormBorderStyle.Sizable;
         BackColor = Theme.Background;
-
+        
         Theme.EnableDoubleBuffer(this);
 
         // Barra superior con estados
@@ -151,17 +151,17 @@ public partial class MainForm : Form
             Padding = new Point(Theme.Spacing8, Theme.Spacing4)
         };
         Theme.EnableDoubleBuffer(_tabControl);
-
+        
         _tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
         _tabControl.DrawItem += (s, e) =>
         {
             var tabPage = _tabControl.TabPages[e.Index];
             var tabRect = _tabControl.GetTabRect(e.Index);
             var isSelected = _tabControl.SelectedIndex == e.Index;
-
+            
             e.Graphics.FillRectangle(new SolidBrush(isSelected ? Theme.Background : Theme.Surface), tabRect);
-            TextRenderer.DrawText(e.Graphics, tabPage.Text, Theme.Body, tabRect,
-                isSelected ? Theme.TextPrimary : Theme.TextSecondary,
+            TextRenderer.DrawText(e.Graphics, tabPage.Text, Theme.Body, tabRect, 
+                isSelected ? Theme.TextPrimary : Theme.TextSecondary, 
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         };
 
@@ -170,7 +170,7 @@ public partial class MainForm : Form
         var conversationsPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0) };
         conversationsPanel.BackColor = Theme.Background;
         Theme.EnableDoubleBuffer(conversationsPanel);
-
+        
         var conversationsHeader = new Panel
         {
             Dock = DockStyle.Top,
@@ -179,7 +179,7 @@ public partial class MainForm : Form
             Padding = new Padding(Theme.Spacing12, Theme.Spacing8, Theme.Spacing12, Theme.Spacing8)
         };
         Theme.EnableDoubleBuffer(conversationsHeader);
-
+        
         var lblConversationsTitle = new Label
         {
             Text = "CONVERSACIONES (SMS)",
@@ -188,7 +188,7 @@ public partial class MainForm : Form
             Location = new Point(Theme.Spacing12, Theme.Spacing8),
             AutoSize = true
         };
-
+        
         var lblPendingCount = new Label
         {
             Text = "Pendientes: 0",
@@ -198,10 +198,10 @@ public partial class MainForm : Form
             AutoSize = true,
             Name = "lblPendingCount"
         };
-
+        
         conversationsHeader.Controls.Add(lblConversationsTitle);
         conversationsHeader.Controls.Add(lblPendingCount);
-
+        
         _txtSearch = new TextBox
         {
             Dock = DockStyle.Top,
@@ -231,7 +231,7 @@ public partial class MainForm : Form
             }
         };
         _txtSearch.TextChanged += async (s, e) => await SearchConversationsAsync();
-
+        
         _flowReceived = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -241,9 +241,9 @@ public partial class MainForm : Form
             BackColor = Theme.Background
         };
         Theme.EnableDoubleBuffer(_flowReceived);
-
+        
         _flowReceived.SizeChanged += (s, e) => UpdateRowWidths();
-
+        
         conversationsPanel.Controls.Add(_flowReceived);
         conversationsPanel.Controls.Add(_txtSearch);
         conversationsPanel.Controls.Add(conversationsHeader);
@@ -445,6 +445,7 @@ public partial class MainForm : Form
         if (_callsSignalRService != null)
         {
             _callsSignalRService.OnCallViewsUpdated += CallsSignalRService_OnCallViewsUpdated;
+            _callsSignalRService.OnNewMissedCall += CallsSignalRService_OnNewMissedCall;
             _callsSignalRService.OnConnected += () => System.Diagnostics.Debug.WriteLine("[SignalR Calls] Connected to Notifier-APiCalls");
             _callsSignalRService.OnDisconnected += () => System.Diagnostics.Debug.WriteLine("[SignalR Calls] Disconnected from Notifier-APiCalls");
         }
@@ -529,8 +530,8 @@ public partial class MainForm : Form
             }
         }
 
-        var scrollbarWidth = _flowReceived.Controls.Count > 0 && _flowReceived.VerticalScroll.Visible
-            ? SystemInformation.VerticalScrollBarWidth
+        var scrollbarWidth = _flowReceived.Controls.Count > 0 && _flowReceived.VerticalScroll.Visible 
+            ? SystemInformation.VerticalScrollBarWidth 
             : 0;
         var targetWidth = Math.Max(200, _flowReceived.ClientSize.Width - scrollbarWidth - 16);
 
@@ -577,7 +578,7 @@ public partial class MainForm : Form
                 _flowReceived.Controls.SetChildIndex(controlsList[i], i);
             }
         }
-
+        
         _flowReceived.ResumeLayout(true);
     }
 
@@ -592,8 +593,8 @@ public partial class MainForm : Form
         if (_flowReceived == null || _flowReceived.Controls.Count == 0)
             return;
 
-        var scrollbarWidth = _flowReceived.VerticalScroll.Visible
-            ? SystemInformation.VerticalScrollBarWidth
+        var scrollbarWidth = _flowReceived.VerticalScroll.Visible 
+            ? SystemInformation.VerticalScrollBarWidth 
             : 0;
         var targetWidth = Math.Max(200, _flowReceived.ClientSize.Width - scrollbarWidth - 16);
 
@@ -612,12 +613,12 @@ public partial class MainForm : Form
 
         var previousPhone = _selectedPhone;
         _selectedPhone = phone;
-
+        
         UpdateRowSelection(previousPhone, phone);
 
         await OpenChatModalAsync(phone);
     }
-
+    
     private void UpdateRowSelection(string? previousPhone, string newPhone)
     {
         if (InvokeRequired)
@@ -625,7 +626,7 @@ public partial class MainForm : Form
             Invoke(new Action<string?, string>(UpdateRowSelection), previousPhone, newPhone);
             return;
         }
-
+        
         foreach (Control ctrl in _flowReceived.Controls)
         {
             if (ctrl is ConversationRowControl row)
@@ -670,8 +671,8 @@ public partial class MainForm : Form
             return;
         }
 
-        var customerPhone = !string.IsNullOrWhiteSpace(message.CustomerPhone)
-            ? message.CustomerPhone
+        var customerPhone = !string.IsNullOrWhiteSpace(message.CustomerPhone) 
+            ? message.CustomerPhone 
             : message.Originator;
 
         if (string.IsNullOrWhiteSpace(customerPhone)) return;
@@ -686,7 +687,7 @@ public partial class MainForm : Form
         if (string.IsNullOrEmpty(selectedPhoneNormalized) && !string.IsNullOrWhiteSpace(_selectedPhone))
             selectedPhoneNormalized = _selectedPhone;
 
-        var isMatch = !string.IsNullOrWhiteSpace(selectedPhoneNormalized) &&
+        var isMatch = !string.IsNullOrWhiteSpace(selectedPhoneNormalized) && 
                       selectedPhoneNormalized == customerPhoneNormalized;
 
         if (_conversationsController != null)
@@ -710,8 +711,8 @@ public partial class MainForm : Form
             return;
         }
 
-        var customerPhone = !string.IsNullOrWhiteSpace(message.CustomerPhone)
-            ? message.CustomerPhone
+        var customerPhone = !string.IsNullOrWhiteSpace(message.CustomerPhone) 
+            ? message.CustomerPhone 
             : message.Recipient;
 
         if (string.IsNullOrWhiteSpace(customerPhone)) return;
@@ -726,7 +727,7 @@ public partial class MainForm : Form
         if (string.IsNullOrEmpty(selectedPhoneNormalized) && !string.IsNullOrWhiteSpace(_selectedPhone))
             selectedPhoneNormalized = _selectedPhone;
 
-        var isMatch = !string.IsNullOrWhiteSpace(selectedPhoneNormalized) &&
+        var isMatch = !string.IsNullOrWhiteSpace(selectedPhoneNormalized) && 
                       selectedPhoneNormalized == customerPhoneNormalized;
 
         if (_conversationsController != null)
@@ -756,6 +757,62 @@ public partial class MainForm : Form
         _ = Task.Run(async () => { await LoadMissedCallsAsync(); });
     }
 
+    private void CallsSignalRService_OnNewMissedCall(object call)
+    {
+        if (InvokeRequired)
+        {
+            Invoke(new Action<object>(CallsSignalRService_OnNewMissedCall), call);
+            return;
+        }
+
+        System.Diagnostics.Debug.WriteLine("[SignalR Calls] NewMissedCall received, scheduling refresh of vw_Incoming_NoAtendidas_24h_ConCliente");
+        
+        // Usar el mismo mecanismo de debounce que CallViewsUpdated
+        if (_missedCallsRefreshInProgress)
+        {
+            _missedCallsRefreshPending = true;
+            System.Diagnostics.Debug.WriteLine("[SignalR Calls] Refresh already in progress, marked as pending");
+            return;
+        }
+
+        // Cancelar timer anterior si existe
+        _missedCallsRefreshTimer?.Dispose();
+        
+        // Crear nuevo timer con debounce de 500ms
+        _missedCallsRefreshTimer = new System.Threading.Timer(async _ =>
+        {
+            if (_missedCallsRefreshInProgress)
+            {
+                _missedCallsRefreshPending = true;
+                return;
+            }
+
+            _missedCallsRefreshInProgress = true;
+            _missedCallsRefreshPending = false;
+
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("[SignalR Calls] Executing debounced refresh after NewMissedCall");
+                await LoadMissedCallsAsync(); // Esto recarga desde vw_Incoming_NoAtendidas_24h_ConCliente
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SignalR Calls] Error refreshing missed calls: {ex.Message}");
+            }
+            finally
+            {
+                _missedCallsRefreshInProgress = false;
+                
+                // Si había un refresh pendiente, ejecutarlo ahora
+                if (_missedCallsRefreshPending)
+                {
+                    _missedCallsRefreshPending = false;
+                    _ = Task.Run(async () => { await LoadMissedCallsAsync(); });
+                }
+            }
+        }, null, TimeSpan.FromMilliseconds(500), Timeout.InfiniteTimeSpan);
+    }
+
     private void CallsSignalRService_OnCallViewsUpdated()
     {
         if (InvokeRequired)
@@ -783,16 +840,16 @@ public partial class MainForm : Form
             if (_missedCallsRefreshInProgress)
             {
                 _missedCallsRefreshPending = true;
-                return;
-            }
+            return;
+        }
 
             _missedCallsRefreshInProgress = true;
             _missedCallsRefreshPending = false;
 
             try
-            {
+        {
                 System.Diagnostics.Debug.WriteLine("[SignalR Calls] Executing debounced refresh");
-                await LoadMissedCallsAsync();
+            await LoadMissedCallsAsync();
             }
             catch (Exception ex)
             {
@@ -819,12 +876,12 @@ public partial class MainForm : Form
         try
         {
             var calls = await _apiClient.GetMissedCallsFromViewAsync(limit: 200);
-
+            
             if (InvokeRequired)
                 Invoke(new Action(() => RefreshMissedCallsUI(calls)));
             else
                 RefreshMissedCallsUI(calls);
-        }
+            }
         catch
         {
             if (InvokeRequired)
@@ -933,7 +990,7 @@ public partial class MainForm : Form
 
         _lblMissedCallsCount.Text = $"Total: {calls.Count}";
         _lblMissedCallsCount.ForeColor = Theme.TextSecondary;
-
+        
         _lblMissedCallsLastUpdate.Text = $"● Actualizado: {DateTime.Now:HH:mm:ss}";
 
         _missedCallsBindingSource.DataSource = calls;
@@ -954,7 +1011,7 @@ public partial class MainForm : Form
     {
         if (InvokeRequired)
         {
-            Invoke(new Action(() =>
+            Invoke(new Action(() => 
             {
                 _lblSignalRStatus.Text = "SignalR: Reconectando...";
                 _lblSignalRStatus.BackColor = Color.Orange;

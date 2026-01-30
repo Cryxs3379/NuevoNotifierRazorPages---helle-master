@@ -33,7 +33,7 @@ public class MissedCallsService : IMissedCallsService
                 .ToListAsync(cancellationToken);
 
             _logger.LogInformation("Retrieved {Count} calls from NotifierCalls_Staging", calls.Count);
-
+            
             return new MissedCallsResponse
             {
                 Success = true,
@@ -55,7 +55,7 @@ public class MissedCallsService : IMissedCallsService
             var now = DateTime.UtcNow;
             var today = now.Date;
             var weekStart = today.AddDays(-(int)today.DayOfWeek);
-
+            
             var total = await _dbContext.NotifierCallsStaging.CountAsync(cancellationToken);
             var todayCount = await _dbContext.NotifierCallsStaging
                 .CountAsync(c => c.DateAndTime >= today, cancellationToken);
