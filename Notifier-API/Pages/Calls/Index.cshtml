@@ -41,71 +41,68 @@
 }
 
 <!-- KPI Cards -->
-@if (Model.Stats != null)
-{
-    <div class="row g-3 mb-4" id="statsCards">
-        <div class="col-lg-3 col-md-6">
-            <div class="card kpi-card border-start border-start-4 border-start-danger">
-                <div class="card-body">
-                    <div class="d-flex align-items-center justify-content-between">
-                        <div>
-                            <p class="text-muted small mb-1">Total</p>
-                            <h2 class="mb-0 fw-bold" id="statsTotal">@Model.Stats.TotalMissedCalls</h2>
-                        </div>
-                        <div class="kpi-icon text-danger">
-                            <i class="bi bi-telephone-x-fill" style="font-size: 1.4rem;"></i>
-                        </div>
+<div class="row g-3 mb-4" id="statsCards">
+    <div class="col-lg-3 col-md-6">
+        <div class="card kpi-card border-start border-start-4 border-start-primary">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <p class="text-muted small mb-1">Total Histórico</p>
+                        <h2 class="mb-0 fw-bold" id="kpiTotalHistorico">-</h2>
                     </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-3 col-md-6">
-            <div class="card kpi-card border-start border-start-4 border-start-warning">
-                <div class="card-body">
-                    <div class="d-flex align-items-center justify-content-between">
-                        <div>
-                            <p class="text-muted small mb-1">Hoy</p>
-                            <h2 class="mb-0 fw-bold" id="statsToday">@Model.Stats.TodayMissedCalls</h2>
-                        </div>
-                        <div class="kpi-icon text-warning">
-                            <i class="bi bi-calendar-day-fill" style="font-size: 1.4rem;"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-3 col-md-6">
-            <div class="card kpi-card border-start border-start-4 border-start-info">
-                <div class="card-body">
-                    <div class="d-flex align-items-center justify-content-between">
-                        <div>
-                            <p class="text-muted small mb-1">Esta Semana</p>
-                            <h2 class="mb-0 fw-bold" id="statsWeek">@Model.Stats.ThisWeekMissedCalls</h2>
-                        </div>
-                        <div class="kpi-icon text-info">
-                            <i class="bi bi-calendar-week-fill" style="font-size: 1.4rem;"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-3 col-md-6">
-            <div class="card kpi-card border-start border-start-4 border-start-primary">
-                <div class="card-body">
-                    <div class="d-flex align-items-center justify-content-between">
-                        <div>
-                            <p class="text-muted small mb-1">Última llamada</p>
-                            <p class="mb-0 fw-semibold"><small id="statsLastCall">@Model.LastCallTime</small></p>
-                        </div>
-                        <div class="kpi-icon text-primary">
-                            <i class="bi bi-clock-history" style="font-size: 1.4rem;"></i>
-                        </div>
+                    <div class="kpi-icon text-primary">
+                        <i class="bi bi-clock-history" style="font-size: 1.4rem;"></i>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-}
+    <div class="col-lg-3 col-md-6">
+        <div class="card kpi-card border-start border-start-4 border-start-success">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <p class="text-muted small mb-1">Salientes 24h</p>
+                        <h2 class="mb-0 fw-bold" id="kpiSalientes24h">-</h2>
+                    </div>
+                    <div class="kpi-icon text-success">
+                        <i class="bi bi-arrow-up-circle" style="font-size: 1.4rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card kpi-card border-start border-start-4 border-start-danger">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <p class="text-muted small mb-1">No Atendidas 24h</p>
+                        <h2 class="mb-0 fw-bold" id="kpiNoAtendidas24h">-</h2>
+                    </div>
+                    <div class="kpi-icon text-danger">
+                        <i class="bi bi-telephone-x" style="font-size: 1.4rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card kpi-card border-start border-start-4 border-start-info">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <p class="text-muted small mb-1">Atendidas 24h</p>
+                        <h2 class="mb-0 fw-bold" id="kpiAtendidas24h">-</h2>
+                    </div>
+                    <div class="kpi-icon text-info">
+                        <i class="bi bi-telephone-check" style="font-size: 1.4rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Tabs Navigation -->
 <ul class="nav nav-tabs mb-3" id="callsTabs" role="tablist">
@@ -590,6 +587,55 @@
             }, 500);
         }
 
+        // Función para cargar todos los KPIs
+        async function loadAllKPIs() {
+            const apiBaseUrlForTabs = "@Model.ApiBaseUrl".replace(/\/$/, "");
+            
+            try {
+                // Cargar total histórico (desde el endpoint de stats)
+                const statsResponse = await fetch('/api/v1/calls/stats');
+                if (statsResponse.ok) {
+                    const statsData = await statsResponse.json();
+                    const totalEl = document.getElementById('kpiTotalHistorico');
+                    if (totalEl && statsData.totalMissedCalls !== undefined) {
+                        totalEl.textContent = statsData.totalMissedCalls || 0;
+                    }
+                }
+
+                // Cargar salientes 24h
+                const outgoingResponse = await fetch(`${apiBaseUrlForTabs}/api/v1/calls/views/outgoing-24h`);
+                if (outgoingResponse.ok) {
+                    const outgoingData = await outgoingResponse.json();
+                    const outgoingEl = document.getElementById('kpiSalientes24h');
+                    if (outgoingEl && Array.isArray(outgoingData)) {
+                        outgoingEl.textContent = outgoingData.length;
+                    }
+                }
+
+                // Cargar no atendidas 24h
+                const noAtendidasResponse = await fetch(`${apiBaseUrlForTabs}/api/v1/calls/views/incoming-noatendidas-24h`);
+                if (noAtendidasResponse.ok) {
+                    const noAtendidasData = await noAtendidasResponse.json();
+                    const noAtendidasEl = document.getElementById('kpiNoAtendidas24h');
+                    if (noAtendidasEl && Array.isArray(noAtendidasData)) {
+                        noAtendidasEl.textContent = noAtendidasData.length;
+                    }
+                }
+
+                // Cargar atendidas 24h
+                const atendidasResponse = await fetch(`${apiBaseUrlForTabs}/api/v1/calls/views/incoming-atendidas-24h`);
+                if (atendidasResponse.ok) {
+                    const atendidasData = await atendidasResponse.json();
+                    const atendidasEl = document.getElementById('kpiAtendidas24h');
+                    if (atendidasEl && Array.isArray(atendidasData)) {
+                        atendidasEl.textContent = atendidasData.length;
+                    }
+                }
+            } catch (error) {
+                console.error('Error cargando KPIs:', error);
+            }
+        }
+
         // SignalR Connection para actualizaciones en tiempo real
         // Conectar al hub de Notifier-APiCalls (puerto 5001)
         const apiBaseUrl = "@Model.ApiBaseUrl".replace(/\/$/, "");
@@ -726,6 +772,9 @@
             
             // Usar debounce para evitar múltiples refrescos si llegan varios eventos seguidos
             debouncedRefreshCalls();
+            
+            // Actualizar KPI de total histórico
+            loadAllKPIs();
         });
 
         // Escuchar evento CallViewsUpdated (actualización de vistas 24h después de ProcessNotifierCalls)
@@ -736,6 +785,9 @@
             tabDataCache.outgoing24h = null;
             tabDataCache.incomingNo24h = null;
             tabDataCache.incomingOk24h = null;
+            
+            // Actualizar KPIs de las vistas 24h
+            loadAllKPIs();
             
             // Refrescar las 3 vistas 24h automáticamente (con debounce)
             debouncedRefreshAll24hViews();
@@ -766,6 +818,9 @@
                 loadTabData(tabKey, forceRefresh);
             });
         }
+
+        // Cargar KPIs al inicio
+        loadAllKPIs();
 
         // Iniciar conexión SignalR
         callsConnection.start()
