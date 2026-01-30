@@ -737,13 +737,8 @@
             tabDataCache.incomingNo24h = null;
             tabDataCache.incomingOk24h = null;
             
-            // Si la pestaña activa es una de las vistas 24h, refrescar con debounce
-            if (activeTab === 'outgoing24h' || activeTab === 'incomingNo24h' || activeTab === 'incomingOk24h') {
-                console.log(`🔄 Refrescando pestaña activa ${activeTab} después de CallViewsUpdated`);
-                debouncedRefreshActiveTab();
-            } else {
-                console.log(`ℹ️ CallViewsUpdated recibido pero pestaña activa es ${activeTab}, cache invalidado`);
-            }
+            // Refrescar las 3 vistas 24h automáticamente (con debounce)
+            debouncedRefreshAll24hViews();
         });
 
         // Función debounced para refrescar la pestaña activa
@@ -753,6 +748,23 @@
             refreshActiveTabTimeout = setTimeout(() => {
                 refreshActiveTab();
             }, 500);
+        }
+
+        // Debounce para refrescar las 3 vistas 24h en paralelo
+        let refreshAllViewsTimeout = null;
+        function debouncedRefreshAll24hViews() {
+            clearTimeout(refreshAllViewsTimeout);
+            refreshAllViewsTimeout = setTimeout(() => {
+                refreshAll24hViews(true);
+            }, 500);
+        }
+
+        // Refrescar las 3 vistas 24h (en paralelo)
+        function refreshAll24hViews(forceRefresh = true) {
+            const views24h = ['outgoing24h', 'incomingNo24h', 'incomingOk24h'];
+            views24h.forEach(tabKey => {
+                loadTabData(tabKey, forceRefresh);
+            });
         }
 
         // Iniciar conexión SignalR
@@ -1130,6 +1142,11 @@
 
                 // Resetear contador cuando se cambia a histórico
                 if (tabKey === 'historico') {
+                    // Si había llamadas nuevas mientras no estábamos en histórico, refrescar
+                    if (newCallsCount > 0) {
+                        console.log(`🔄 Había ${newCallsCount} llamadas nuevas, refrescando histórico`);
+                        refreshCallsPartial();
+                    }
                     newCallsCount = 0;
                     const badge = document.getElementById('historicoBadge');
                     if (badge) {
