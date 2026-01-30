@@ -312,7 +312,8 @@ namespace NotifierAPI.Controllers
                     PhoneNumber = c.PhoneNumber,
                     NombrePila = c.NombrePila ?? "",
                     NombreCompleto = c.NombreCompleto ?? "",
-                    AnswerCall = null // Esta vista no tiene AnswerCall
+                    AnswerCall = null, // Esta vista no tiene AnswerCall
+                    Recall = c.Recall ?? 0
                 }).ToList();
 
                 return Ok(dtos);

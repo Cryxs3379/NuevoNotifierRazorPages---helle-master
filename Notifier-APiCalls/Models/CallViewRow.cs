@@ -38,6 +38,9 @@ public class IncomingNoAtendidas24hRow
 
     [Column("NombrePila")]
     public string? NombrePila { get; set; }
+
+    [Column("Recall")]
+    public long? Recall { get; set; }
 }
 
 [Table("vw_Incoming_Atendidas_24h_ConCliente", Schema = "dbo")]

@@ -7,6 +7,7 @@ namespace NotifierAPI.Models
         public string PhoneNumber { get; set; } = string.Empty;
         public string? NombrePila { get; set; }
         public string? NombreCompleto { get; set; }
-    public long? AnswerCall { get; set; }
+        public long? AnswerCall { get; set; }
+        public long? Recall { get; set; }
     }
 }

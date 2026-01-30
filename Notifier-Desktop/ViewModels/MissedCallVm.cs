@@ -8,6 +8,7 @@ public class MissedCallVm
     public string? NombrePila { get; set; }
     public string? NombreCompleto { get; set; }
     public long? AnswerCall { get; set; }
+    public long Recall { get; set; }
 
     public string Cliente
     {
@@ -18,5 +19,5 @@ public class MissedCallVm
         }
     }
 
-    public string Devuelta => AnswerCall.HasValue ? "Sí" : "No";
+    public string Devuelta => Recall == 1 ? "Sí" : "No";
 }
