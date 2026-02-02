@@ -1063,11 +1063,12 @@ public partial class MainForm : Form
                     ? newCall.Cliente
                     : null;
                 
-                var title = !string.IsNullOrWhiteSpace(cliente)
-                    ? $"Llamada perdida de {cliente}"
-                    : "Llamada perdida";
+                var title = "Llamada perdida";
                 
-                var body = $"Tel: {FormatPhoneForDisplay(newCall.PhoneNumber)} • {newCall.DateAndTime:HH:mm}";
+                // Si hay nombre: mostrar nombre y teléfono. Si no hay nombre: solo teléfono
+                var body = !string.IsNullOrWhiteSpace(cliente)
+                    ? $"{cliente} • {newCall.PhoneNumber} • {newCall.DateAndTime:HH:mm}"
+                    : $"{newCall.PhoneNumber} • {newCall.DateAndTime:HH:mm}";
                 
                 _toast.ShowToast(title, body, this);
             }
@@ -1139,12 +1140,14 @@ public partial class MainForm : Form
             ? "1 llamada perdida" 
             : $"{calls.Count} llamadas perdidas";
         
-        // Construir lista compacta de todas las llamadas (formato: "• Nombre/Tel • HH:mm")
+        // Construir lista compacta de todas las llamadas
+        // Si hay nombre: "• Nombre • Teléfono • HH:mm"
+        // Si no hay nombre: "• Teléfono • HH:mm"
         var items = calls.Select(c =>
         {
             var cliente = !string.IsNullOrWhiteSpace(c.Cliente) && c.Cliente != "—"
-                ? c.Cliente
-                : FormatPhoneForDisplay(c.PhoneNumber);
+                ? $"{c.Cliente} • {c.PhoneNumber}"
+                : c.PhoneNumber;
             return $"• {cliente} • {c.DateAndTime:HH:mm}";
         }).ToList();
         
