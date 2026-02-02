@@ -15,14 +15,17 @@ public class ToastNotificationForm : Form
     private const int DisplayDuration = 4500; // ms
     private const int FadeOutDuration = 200; // ms
 
-    public ToastNotificationForm(string title, string body, int width = 360)
+    public ToastNotificationForm(string title, string body, int width = 360, int? customHeight = null)
     {
+        // Calcular altura dinámicamente si se proporciona customHeight, o usar altura por defecto
+        int height = customHeight ?? 90;
+        
         // Configuración básica del formulario
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
-        Size = new Size(width, 90);
+        Size = new Size(width, height);
         BackColor = Color.White;
         Opacity = 0;
         
@@ -48,14 +51,15 @@ public class ToastNotificationForm : Form
         };
         Controls.Add(lblTitle);
 
-        // Label para body
+        // Label para body - ajustar altura según el tamaño del formulario
+        var bodyHeight = height - 44; // altura total - título (20) - padding superior (12) - padding inferior (12)
         var lblBody = new Label
         {
             Text = body,
             Font = Theme.Body,
             ForeColor = Theme.TextSecondary,
             Location = new Point(12, 32),
-            Size = new Size(width - 24, 50),
+            Size = new Size(width - 24, bodyHeight),
             AutoSize = false
         };
         Controls.Add(lblBody);

@@ -14,12 +14,12 @@ public class DesktopToastService
     private const int Margin = 14;
     private const int Spacing = 10;
 
-    public void ShowToast(string title, string body, Control? uiThreadControl = null)
+    public void ShowToast(string title, string body, Control? uiThreadControl = null, int? customHeight = null)
     {
         // Asegurar ejecución en UI thread
         if (uiThreadControl != null && uiThreadControl.InvokeRequired)
         {
-            uiThreadControl.BeginInvoke(new Action(() => ShowToast(title, body, uiThreadControl)));
+            uiThreadControl.BeginInvoke(new Action(() => ShowToast(title, body, uiThreadControl, customHeight)));
             return;
         }
 
@@ -29,15 +29,17 @@ public class DesktopToastService
             var mainForm = Application.OpenForms.Cast<Form>().FirstOrDefault();
             if (mainForm != null && mainForm.InvokeRequired)
             {
-                mainForm.BeginInvoke(new Action(() => ShowToast(title, body, mainForm)));
+                mainForm.BeginInvoke(new Action(() => ShowToast(title, body, mainForm, customHeight)));
                 return;
             }
         }
 
         lock (_lock)
         {
-            // Crear nuevo toast
-            var toast = new ToastNotificationForm(title, body, ToastWidth);
+            // Crear nuevo toast con altura personalizada si se proporciona
+            var toast = customHeight.HasValue
+                ? new ToastNotificationForm(title, body, ToastWidth, customHeight.Value)
+                : new ToastNotificationForm(title, body, ToastWidth);
             
             // Posicionar abajo-derecha
             var screen = Screen.PrimaryScreen ?? Screen.AllScreens[0];

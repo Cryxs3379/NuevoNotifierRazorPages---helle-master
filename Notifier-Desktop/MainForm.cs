@@ -24,6 +24,9 @@ public partial class MainForm : Form
     private System.Threading.Timer? _missedCallsRefreshTimer;
     private bool _missedCallsRefreshPending = false;
     private bool _missedCallsRefreshInProgress = false;
+    
+    // Timer para recordatorios periódicos de llamadas perdidas no devueltas
+    private System.Windows.Forms.Timer? _reminderTimer;
 
     // UI Controls
     private TextBox _txtSearch;
@@ -478,6 +481,9 @@ public partial class MainForm : Form
         await LoadConversationsAsync();
         await LoadMissedCallsAsync();
         await ConnectSignalRAsync();
+        
+        // Iniciar timer de recordatorios
+        StartReminderTimer();
     }
 
     private async Task CheckApiConnectionAsync()
@@ -1097,6 +1103,60 @@ public partial class MainForm : Form
         }
     }
 
+    private void StartReminderTimer()
+    {
+        _reminderTimer = new System.Windows.Forms.Timer { Interval = 60000 }; // 60 segundos = 1 minuto
+        _reminderTimer.Tick += ReminderTimer_Tick;
+        _reminderTimer.Start();
+    }
+
+    private void ReminderTimer_Tick(object? sender, EventArgs e)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => ReminderTimer_Tick(sender, e)));
+            return;
+        }
+
+        // Filtrar llamadas perdidas no devueltas (Recall == 0)
+        var notReturnedCalls = _missedCalls.Where(c => c.Recall == 0).ToList();
+        
+        if (notReturnedCalls.Count == 0) return;
+        
+        // Solo mostrar si la ventana no tiene foco
+        if (!_isWindowFocused)
+        {
+            ShowReminderNotification(notReturnedCalls);
+        }
+    }
+
+    private void ShowReminderNotification(List<MissedCallVm> calls)
+    {
+        if (calls.Count == 0) return;
+        
+        // Formato compacto: mostrar todas las llamadas
+        var title = calls.Count == 1 
+            ? "1 llamada perdida" 
+            : $"{calls.Count} llamadas perdidas";
+        
+        // Construir lista compacta de todas las llamadas (formato: "• Nombre/Tel • HH:mm")
+        var items = calls.Select(c =>
+        {
+            var cliente = !string.IsNullOrWhiteSpace(c.Cliente) && c.Cliente != "—"
+                ? c.Cliente
+                : FormatPhoneForDisplay(c.PhoneNumber);
+            return $"• {cliente} • {c.DateAndTime:HH:mm}";
+        }).ToList();
+        
+        var body = string.Join("\n", items);
+        
+        // Calcular altura aproximada: título (20px) + padding superior (12px) + padding inferior (12px) + (líneas * 16px)
+        // Máximo 400px de altura para no ocupar toda la pantalla
+        var estimatedHeight = Math.Min(20 + 24 + (items.Count * 16) + 12, 400);
+        
+        _toast.ShowToast(title, body, this, estimatedHeight);
+    }
+
     private void UpdateApiStatus(bool connected)
     {
         if (InvokeRequired)
@@ -1143,6 +1203,8 @@ public partial class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        _reminderTimer?.Stop();
+        _reminderTimer?.Dispose();
         _missedCallsRefreshTimer?.Dispose();
         _signalRService?.Dispose();
         _callsSignalRService?.Dispose();
