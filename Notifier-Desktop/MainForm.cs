@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Linq;
+using System.Text.Json;
 using NotifierDesktop.Controllers;
 using NotifierDesktop.Controls;
 using NotifierDesktop.Helpers;
@@ -49,6 +50,9 @@ public partial class MainForm : Form
     // Cache de controles de conversación para reutilización (optimización de performance)
     private readonly Dictionary<string, ConversationRowControl> _conversationControls = new();
     private ChatConversationForm? _chatForm;
+    
+    // Servicio de notificaciones toast
+    private readonly DesktopToastService _toast = new();
 
     public MainForm(AppSettings settings)
     {
@@ -716,6 +720,32 @@ public partial class MainForm : Form
         {
             _chatForm.AppendMessageFromSignalR(message, inbound: true);
         }
+
+        // Mostrar toast solo si la ventana no está enfocada o no está en el chat de ese teléfono
+        bool shouldShowToast = !_isWindowFocused || 
+                               _chatForm == null || 
+                               _chatForm.IsDisposed || 
+                               _chatForm.CurrentPhoneNormalized != customerPhoneNormalized;
+
+        if (shouldShowToast)
+        {
+            var title = $"SMS entrante: {FormatPhoneForDisplay(customerPhone)}";
+            var body = !string.IsNullOrWhiteSpace(message.Body) 
+                ? (message.Body.Length > 90 ? message.Body.Substring(0, 90) + "..." : message.Body)
+                : "Sin contenido";
+            
+            _toast.ShowToast(title, body, this);
+        }
+    }
+
+    private static string FormatPhoneForDisplay(string phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone)) return "Desconocido";
+        if (phone.Length > 8)
+        {
+            return $"***{phone.Substring(phone.Length - 4)}";
+        }
+        return phone;
     }
 
     private void SignalRService_OnNewSentMessage(MessageDto message)
@@ -1001,6 +1031,13 @@ public partial class MainForm : Form
             return;
         }
 
+        // Guardar IDs anteriores para detectar nuevas llamadas
+        var previousIds = _missedCalls.Select(c => c.Id).ToHashSet();
+        
+        // Detectar nuevas llamadas (que no estaban en la lista anterior)
+        var newCalls = calls.Where(c => !previousIds.Contains(c.Id)).ToList();
+        
+        // Actualizar lista
         _missedCalls = calls;
 
         _lblMissedCallsCount.Text = $"Total: {calls.Count}";
@@ -1010,6 +1047,25 @@ public partial class MainForm : Form
 
         _missedCallsBindingSource.DataSource = calls;
         _missedCallsBindingSource.ResetBindings(false);
+        
+        // Mostrar notificaciones para nuevas llamadas (solo si hay nuevas y la ventana no tiene foco)
+        if (newCalls.Count > 0 && !_isWindowFocused)
+        {
+            foreach (var newCall in newCalls)
+            {
+                var cliente = !string.IsNullOrWhiteSpace(newCall.Cliente) && newCall.Cliente != "—"
+                    ? newCall.Cliente
+                    : null;
+                
+                var title = !string.IsNullOrWhiteSpace(cliente)
+                    ? $"Llamada perdida de {cliente}"
+                    : "Llamada perdida";
+                
+                var body = $"Tel: {FormatPhoneForDisplay(newCall.PhoneNumber)} • {newCall.DateAndTime:HH:mm}";
+                
+                _toast.ShowToast(title, body, this);
+            }
+        }
     }
 
     private void ShowMissedCallsError(string message)
