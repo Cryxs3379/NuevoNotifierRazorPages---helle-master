@@ -26,6 +26,7 @@ public static class Theme
     public static readonly Color Success = Color.FromArgb(40, 167, 69);
     public static readonly Color Warning = Color.FromArgb(255, 152, 0);
     public static readonly Color Danger = Color.FromArgb(220, 53, 69);
+    public static readonly Color Info = Color.FromArgb(0, 122, 255);
     
     // Fonts
     private static readonly FontFamily _fontFamily = SystemFonts.DefaultFont.FontFamily;

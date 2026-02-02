@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using NotifierDesktop.UI;
@@ -10,58 +11,64 @@ public class DesktopToastService
 {
     private readonly List<ToastNotificationForm> _activeToasts = new();
     private readonly object _lock = new();
-    private const int ToastWidth = 360;
-    private const int Margin = 14;
+
+    private const int ToastWidth = 380;
+    private const int Margin = 16;
     private const int Spacing = 10;
 
-    public void ShowToast(string title, string body, Control? uiThreadControl = null, int? customHeight = null)
+    public void ShowToast(
+        string title,
+        string body,
+        Control? uiThreadControl = null,
+        int? customHeight = null,
+        Color? accentColor = null,
+        ToastVisualStyle style = ToastVisualStyle.Neutral)
     {
-        // Asegurar ejecución en UI thread
         if (uiThreadControl != null && uiThreadControl.InvokeRequired)
         {
-            uiThreadControl.BeginInvoke(new Action(() => ShowToast(title, body, uiThreadControl, customHeight)));
+            uiThreadControl.BeginInvoke(new Action(() =>
+                ShowToast(title, body, uiThreadControl, customHeight, accentColor, style)));
             return;
         }
 
-        // Si no hay control, intentar obtener uno de Application.OpenForms
         if (uiThreadControl == null)
         {
             var mainForm = Application.OpenForms.Cast<Form>().FirstOrDefault();
             if (mainForm != null && mainForm.InvokeRequired)
             {
-                mainForm.BeginInvoke(new Action(() => ShowToast(title, body, mainForm, customHeight)));
+                mainForm.BeginInvoke(new Action(() =>
+                    ShowToast(title, body, mainForm, customHeight, accentColor, style)));
                 return;
             }
         }
 
         lock (_lock)
         {
-            // Crear nuevo toast con altura personalizada si se proporciona
-            var toast = customHeight.HasValue
-                ? new ToastNotificationForm(title, body, ToastWidth, customHeight.Value)
-                : new ToastNotificationForm(title, body, ToastWidth);
-            
-            // Posicionar abajo-derecha
-            var screen = Screen.PrimaryScreen ?? Screen.AllScreens[0];
-            var workingArea = screen.WorkingArea;
-            
-            int x = workingArea.Right - ToastWidth - Margin;
-            int y = workingArea.Bottom - Margin - toast.Height;
-            
-            // Ajustar Y para stacking (apilar hacia arriba)
-            foreach (var activeToast in _activeToasts.ToList())
-            {
-                if (activeToast != null && !activeToast.IsDisposed)
-                {
-                    y -= (activeToast.Height + Spacing);
-                }
-            }
-            
-            toast.Location = new System.Drawing.Point(x, y);
-            
-            // Añadir a lista y mostrar
+            CleanupDisposed();
+
+            var toast = new ToastNotificationForm(
+                title: title,
+                body: body,
+                width: ToastWidth,
+                customHeight: customHeight,
+                accentColor: accentColor,
+                style: style);
+
+            var screen = GetTargetScreen();
+            var wa = screen.WorkingArea;
+
+            // base bottom-right
+            int x = wa.Right - ToastWidth - Margin;
+            int y = wa.Bottom - Margin - toast.Height;
+
+            // stacking
+            foreach (var t in _activeToasts)
+                y -= (t.Height + Spacing);
+
+            toast.Location = new Point(x, y);
+
             _activeToasts.Add(toast);
-            toast.FormClosed += (s, e) => RemoveToast(toast);
+            toast.FormClosed += (_, __) => RemoveToast(toast);
             toast.ShowToast();
         }
     }
@@ -71,24 +78,47 @@ public class DesktopToastService
         lock (_lock)
         {
             _activeToasts.Remove(toast);
-            
-            // Reorganizar toasts restantes (reflow)
-            var screen = Screen.PrimaryScreen ?? Screen.AllScreens[0];
-            var workingArea = screen.WorkingArea;
-            
-            int baseY = workingArea.Bottom - Margin;
-            
-            foreach (var activeToast in _activeToasts.ToList())
-            {
-                if (activeToast != null && !activeToast.IsDisposed)
-                {
-                    baseY -= (activeToast.Height + Spacing);
-                    activeToast.Location = new System.Drawing.Point(
-                        workingArea.Right - ToastWidth - Margin,
-                        baseY
-                    );
-                }
-            }
+            CleanupDisposed();
+            Reflow();
         }
     }
+
+    private void Reflow()
+    {
+        if (_activeToasts.Count == 0) return;
+
+        var screen = GetTargetScreen();
+        var wa = screen.WorkingArea;
+
+        int x = wa.Right - ToastWidth - Margin;
+        int y = wa.Bottom - Margin;
+
+        foreach (var t in _activeToasts)
+        {
+            y -= t.Height;
+            t.Location = new Point(x, y);
+            y -= Spacing;
+        }
+    }
+
+    private void CleanupDisposed()
+    {
+        _activeToasts.RemoveAll(t => t == null || t.IsDisposed);
+    }
+
+    private static Screen GetTargetScreen()
+    {
+        // Preferimos donde está el usuario (cursor). Si no, primary.
+        var cursorPos = Cursor.Position;
+        return Screen.FromPoint(cursorPos) ?? Screen.PrimaryScreen ?? Screen.AllScreens[0];
+    }
+}
+
+public enum ToastVisualStyle
+{
+    Neutral,
+    Info,
+    Success,
+    Warning,
+    Danger
 }

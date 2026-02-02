@@ -735,12 +735,13 @@ public partial class MainForm : Form
 
         if (shouldShowToast)
         {
-            var title = $"SMS entrante: {FormatPhoneForDisplay(customerPhone)}";
+            var title = $"SMS entrante: {customerPhone}";
+            // Mostrar mensaje completo sin límite de 90 caracteres
             var body = !string.IsNullOrWhiteSpace(message.Body) 
-                ? (message.Body.Length > 90 ? message.Body.Substring(0, 90) + "..." : message.Body)
+                ? message.Body
                 : "Sin contenido";
             
-            _toast.ShowToast(title, body, this);
+            _toast.ShowToast(title, body, this, accentColor: Theme.Info, style: ToastVisualStyle.Info);
         }
     }
 
@@ -1119,15 +1120,30 @@ public partial class MainForm : Form
             return;
         }
 
-        // Filtrar llamadas perdidas no devueltas (Recall == 0)
-        var notReturnedCalls = _missedCalls.Where(c => c.Recall == 0).ToList();
-        
-        if (notReturnedCalls.Count == 0) return;
-        
         // Solo mostrar si la ventana no tiene foco
         if (!_isWindowFocused)
         {
-            ShowReminderNotification(notReturnedCalls);
+            // Mostrar notificación de llamadas perdidas no devueltas (si hay)
+            var notReturnedCalls = _missedCalls.Where(c => c.Recall == 0).ToList();
+            if (notReturnedCalls.Count > 0)
+            {
+                ShowReminderNotification(notReturnedCalls);
+            }
+            
+            // Mostrar notificación de mensajes pendientes (si hay)
+            // El servicio de toasts las apilará automáticamente una encima de la otra
+            if (_conversationsController != null)
+            {
+                var pendingConversations = _conversationsController.Conversations
+                    .Where(c => c.PendingReply && c.LastMessageAt.HasValue)
+                    .OrderByDescending(c => c.LastMessageAt)
+                    .ToList();
+                
+                if (pendingConversations.Count > 0)
+                {
+                    ShowPendingMessagesNotification(pendingConversations);
+                }
+            }
         }
     }
 
@@ -1157,7 +1173,32 @@ public partial class MainForm : Form
         // Máximo 400px de altura para no ocupar toda la pantalla
         var estimatedHeight = Math.Min(20 + 24 + (items.Count * 16) + 12, 400);
         
-        _toast.ShowToast(title, body, this, estimatedHeight);
+        // Rojo para llamadas perdidas
+        _toast.ShowToast(title, body, this, estimatedHeight, Theme.Danger, ToastVisualStyle.Danger);
+    }
+
+    private void ShowPendingMessagesNotification(List<ConversationVm> conversations)
+    {
+        if (conversations.Count == 0) return;
+        
+        var title = conversations.Count == 1 
+            ? "1 mensaje pendiente de responder" 
+            : $"{conversations.Count} mensajes pendientes de responder";
+        
+        // Construir lista con teléfono y hora de llegada
+        var items = conversations.Select(c =>
+        {
+            var hora = c.LastMessageAt?.ToString("HH:mm") ?? "?";
+            return $"• {c.Phone} • recibido a las {hora}";
+        }).ToList();
+        
+        var body = string.Join("\n", items);
+        
+        // Calcular altura aproximada
+        var estimatedHeight = Math.Min(20 + 24 + (items.Count * 16) + 12, 400);
+        
+        // Amarillo para mensajes pendientes
+        _toast.ShowToast(title, body, this, estimatedHeight, Theme.Warning, ToastVisualStyle.Warning);
     }
 
     private void UpdateApiStatus(bool connected)
