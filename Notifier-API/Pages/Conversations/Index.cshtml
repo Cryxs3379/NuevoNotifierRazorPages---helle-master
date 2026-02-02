@@ -1,0 +1,69 @@
+@page
+@model NotifierAPI.Pages.Conversations.ConversationsIndexModel
+@{
+    ViewData["Title"] = "Conversaciones";
+}
+
+<div class="container-xxl py-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-3">
+        <div>
+            <h1 class="h3 mb-1">Conversaciones</h1>
+            <p class="text-muted mb-0">Listado reciente de chats</p>
+        </div>
+        <form method="get" class="d-flex gap-2">
+            <input type="text" class="form-control" name="q" value="@Model.Q" placeholder="Buscar por teléfono" />
+            <button class="btn btn-outline-primary" type="submit">
+                <i class="bi bi-search"></i>
+                Buscar
+            </button>
+        </form>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="alert alert-warning">@Model.ErrorMessage</div>
+    }
+    else if (Model.Conversations?.Items == null || Model.Conversations.Items.Count == 0)
+    {
+        <div class="alert alert-info">No hay conversaciones para mostrar.</div>
+    }
+    else
+    {
+        <div class="list-group">
+            @foreach (var convo in Model.Conversations.Items)
+            {
+                var phone = convo.CustomerPhone ?? "(sin teléfono)";
+                var lastMessageAt = convo.LastMessageAt?.ToString("g") ?? "Sin actividad";
+                <a class="list-group-item list-group-item-action" href="/Conversations/Chat?phone=@Uri.EscapeDataString(phone)">
+                    <div class="d-flex w-100 justify-content-between align-items-start gap-3">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <strong>@phone</strong>
+                                @if (convo.PendingReply)
+                                {
+                                    <span class="badge bg-warning text-dark">Pendiente</span>
+                                }
+                                @if (convo.Unread)
+                                {
+                                    <span class="badge bg-primary">No leído</span>
+                                }
+                            </div>
+                            <div class="text-muted small text-truncate">@convo.Preview</div>
+                            <div class="small text-muted mt-1">
+                                @if (!string.IsNullOrWhiteSpace(convo.AssignedTo))
+                                {
+                                    <span>Asignado a: @convo.AssignedTo</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(convo.LastRespondedBy))
+                                {
+                                    <span class="ms-2">Última respuesta: @convo.LastRespondedBy</span>
+                                }
+                            </div>
+                        </div>
+                        <small class="text-muted">@lastMessageAt</small>
+                    </div>
+                </a>
+            }
+        </div>
+    }
+</div>

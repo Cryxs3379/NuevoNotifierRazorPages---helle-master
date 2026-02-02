@@ -49,6 +49,12 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link @(currentPage.Equals("/Conversations/Index", StringComparison.OrdinalIgnoreCase) ? "active" : "")" asp-page="/Conversations/Index">
+                                <i class="bi bi-chat-left-text-fill"></i>
+                                <span>Conversaciones</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link @(currentPage.Equals("/Calls/Index", StringComparison.OrdinalIgnoreCase) ? "active" : "")" asp-page="/Calls/Index">
                                 <i class="bi bi-telephone-fill"></i>
                                 <span>Llamadas</span>
