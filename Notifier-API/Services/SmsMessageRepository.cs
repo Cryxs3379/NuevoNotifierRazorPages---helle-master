@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Notifier.Messages.Application.Abstractions;
 using NotifierAPI.Data;
 using NotifierAPI.Helpers;
 
@@ -7,7 +8,7 @@ namespace NotifierAPI.Services;
 
 public record SaveResult(bool IsSuccess, bool IsDuplicate, string? Error);
 
-public class SmsMessageRepository
+public class SmsMessageRepository : ISmsMessageRepository
 {
     private readonly NotificationsDbContext _dbContext;
     private readonly ILogger<SmsMessageRepository> _logger;
@@ -130,7 +131,7 @@ public class SmsMessageRepository
         string recipient,
         string body,
         string type,
-        DateTime? messageAt,
+        DateTime messageAtUtc,
         string? sentBy = null,
         CancellationToken cancellationToken = default)
     {
@@ -143,7 +144,7 @@ public class SmsMessageRepository
                 Body = body ?? string.Empty,
                 Type = type ?? string.Empty,
                 Direction = 1, // Sent
-                MessageAt = messageAt ?? DateTime.UtcNow,
+                MessageAt = messageAtUtc,
                 CreatedAt = DateTime.UtcNow,
                 SentBy = string.IsNullOrWhiteSpace(sentBy) ? null : sentBy
             };
@@ -153,22 +154,6 @@ public class SmsMessageRepository
 
             _logger.LogDebug("Saved sent SMS message to database. Id: {Id}, Originator: {Originator}, Recipient: {Recipient}", 
                 message.Id, originator, recipient);
-            
-            // Actualizar ConversationState (opcional, no debe romper si falla)
-            if (_conversationStateService != null && !string.IsNullOrWhiteSpace(recipient))
-            {
-                try
-                {
-                    // Normalizar recipient antes de actualizar ConversationState
-                    var normalizedRecipient = PhoneNormalizer.NormalizePhone(recipient);
-                    await _conversationStateService.UpsertOutboundAsync(normalizedRecipient, message.MessageAt, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to update ConversationState for outbound message. Recipient: {Recipient}", recipient);
-                    // No lanzar excepción, el mensaje ya se guardó correctamente
-                }
-            }
             
             return message.Id;
         }

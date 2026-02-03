@@ -303,11 +303,8 @@ public static class WebApplicationExtensions
         // DB-first send endpoint (para WinForms)
         app.MapPost("/api/v1/db/messages/send", async (
             SendMessageRequest body,
-            ISendService sendService,
-            SmsMessageRepository smsRepository,
-            IHubContext<MessagesHub> hubContext,
             EsendexSettings esendexSettings,
-            NotificationsDbContext dbContext,
+            Notifier.Messages.Application.SendSms.ISendSmsAndNotifyUseCase useCase,
             CancellationToken ct) =>
         {
             try
@@ -316,96 +313,37 @@ public static class WebApplicationExtensions
                 {
                     return Results.BadRequest(new { error = "to y message son requeridos" });
                 }
+                var originator = esendexSettings.AccountReference ?? "UNKNOWN";
 
-                // Normalizar número telefónico antes de validar
-                var toNormalized = body.To.Trim().Replace(" ", "");
-                
-                // Si empieza con "00", convertir a "+"
-                if (toNormalized.StartsWith("00") && toNormalized.Length > 2)
-                {
-                    toNormalized = "+" + toNormalized.Substring(2);
-                }
-                
-                // Si no empieza con '+', añadirlo
-                if (!toNormalized.StartsWith("+"))
-                {
-                    toNormalized = "+" + toNormalized;
-                }
-
-                // Validar formato E.164 después de normalizar
-                if (!System.Text.RegularExpressions.Regex.IsMatch(toNormalized, @"^\+\d{6,15}$"))
-                {
-                    return Results.BadRequest(new { error = "to debe ser un número telefónico válido (formato E.164: +XXXXXXXX)" });
-                }
-
-                // Enviar SMS con número normalizado
-                var sendResult = await sendService.SendAsync(
-                    toNormalized, 
-                    body.Message, 
-                    esendexSettings.AccountReference, 
+                var result = await useCase.ExecuteAsync(
+                    new Notifier.Messages.Application.SendSms.SendSmsCommand(
+                        body.To,
+                        body.Message,
+                        originator,
+                        esendexSettings.AccountReference,
+                        body.SentBy),
                     ct);
 
-                // Guardar en SQL (usar número normalizado con '+')
-                var originator = esendexSettings.AccountReference ?? "UNKNOWN";
-                var savedId = await smsRepository.SaveSentAsync(
-                    originator: originator,
-                    recipient: toNormalized, // Usar número normalizado
-                    body: body.Message,
-                    type: "SMS",
-                    messageAt: sendResult.SubmittedUtc,
-                    sentBy: body.SentBy, // Nombre del recepcionista (opcional)
-                    cancellationToken: ct);
-
-                // Emitir SignalR si se guardó correctamente
-                if (savedId.HasValue)
+                if (result.ErrorType == Notifier.Messages.Application.SendSms.SendSmsErrorType.InvalidRequest ||
+                    result.ErrorType == Notifier.Messages.Application.SendSms.SendSmsErrorType.InvalidPhone)
                 {
-                    try
-                    {
-                        // Normalizar customerPhone al formato canónico (sin '+') para ConversationState
-                        // toNormalized tiene '+' (E.164), pero customerPhone debe ser sin '+' para consistencia
-                        string customerPhoneForSignalR;
-                        try
-                        {
-                            customerPhoneForSignalR = PhoneNormalizer.NormalizePhone(toNormalized);
-                            if (toNormalized != customerPhoneForSignalR)
-                            {
-                                app.Logger.LogDebug("Normalized customerPhone in SignalR NewSentMessage: '{Original}' -> '{Normalized}'", 
-                                    toNormalized, customerPhoneForSignalR);
-                            }
-                        }
-                        catch (Exception normEx)
-                        {
-                            app.Logger.LogWarning(normEx, "Failed to normalize customerPhone for SignalR: To={To}", LoggingHelpers.MaskPhone(toNormalized));
-                            // Usar el original si falla la normalización
-                            customerPhoneForSignalR = toNormalized;
-                        }
-                        
-                        // Obtener SentBy del mensaje guardado para incluirlo en SignalR
-                        var savedMessage = await dbContext.SmsMessages.FindAsync(new object[] { savedId.Value }, ct);
-                        var sentBy = savedMessage?.SentBy;
-                        
-                        await hubContext.Clients.All.SendAsync("NewSentMessage", new
-                        {
-                            id = savedId.Value.ToString(),
-                            customerPhone = customerPhoneForSignalR, // Para outbound, customerPhone = Recipient (normalizado sin '+')
-                            originator = originator,
-                            recipient = toNormalized, // Mantener formato E.164 con '+' para recipient
-                            body = body.Message,
-                            direction = 1,
-                            messageAt = sendResult.SubmittedUtc.ToString("O"),
-                            sentBy = sentBy // Incluir SentBy si está disponible (opcional, no rompe clientes antiguos)
-                        }, ct);
-                    }
-                    catch (Exception signalREx)
-                    {
-                        app.Logger.LogWarning(signalREx, "Failed to emit NewSentMessage event via SignalR");
-                    }
+                    return Results.BadRequest(new { error = result.ErrorMessage ?? "Solicitud inválida" });
+                }
+
+                if (result.ErrorType == Notifier.Messages.Application.SendSms.SendSmsErrorType.SendFailed)
+                {
+                    return Results.Problem(statusCode: 502, title: "Error al enviar SMS", detail: result.ErrorMessage);
+                }
+
+                if (result.ErrorType == Notifier.Messages.Application.SendSms.SendSmsErrorType.Unexpected)
+                {
+                    return Results.Problem(statusCode: 500, title: "Error inesperado al enviar mensaje", detail: result.ErrorMessage);
                 }
 
                 return Results.Ok(new
                 {
                     success = true,
-                    id = savedId
+                    id = result.SavedId
                 });
             }
             catch (ArgumentException ex)

@@ -1,37 +1,26 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.AspNetCore.SignalR;
-using NotifierAPI.Services;
-using NotifierAPI.Models;
+using Notifier.Messages.Application.SendSms;
 using NotifierAPI.Configuration;
-using NotifierAPI.Hubs;
-using NotifierAPI.Helpers;
-using NotifierAPI.Data;
 using System.Text.RegularExpressions;
 
 namespace NotifierAPI.Pages.Messages;
 
 public class MessagesReplyModel : PageModel
 {
-    private readonly ISendService _sendService;
     private readonly ILogger<MessagesReplyModel> _logger;
-    private readonly SmsMessageRepository _smsRepository;
-    private readonly IHubContext<MessagesHub> _hubContext;
     private readonly EsendexSettings _esendexSettings;
+    private readonly ISendSmsAndNotifyUseCase _useCase;
 
     public MessagesReplyModel(
-        ISendService sendService, 
         ILogger<MessagesReplyModel> logger,
-        SmsMessageRepository smsRepository,
-        IHubContext<MessagesHub> hubContext,
-        EsendexSettings esendexSettings)
+        EsendexSettings esendexSettings,
+        ISendSmsAndNotifyUseCase useCase)
     {
-        _sendService = sendService;
         _logger = logger;
-        _smsRepository = smsRepository;
-        _hubContext = hubContext;
         _esendexSettings = esendexSettings;
+        _useCase = useCase;
     }
 
     [BindProperty]
@@ -80,95 +69,37 @@ public class MessagesReplyModel : PageModel
             _logger.LogInformation("Sending message to {To}, length={Length}", 
                 To.Substring(To.Length - 3), Message.Length);
 
-            var result = await _sendService.SendAsync(To, Message, AccountRef, HttpContext.RequestAborted);
-
-            _logger.LogInformation("Message sent successfully. ID={Id}", result.Id);
-
-            // Intentar guardar en BD (después del envío exitoso)
             var originator = _esendexSettings.AccountReference ?? AccountRef ?? "UNKNOWN";
-            // Para Razor Pages, no tenemos sentBy directo, usar null (mensajes desde web no tienen recepcionista asignado)
-            var savedId = await _smsRepository.SaveSentAsync(
-                originator: originator,
-                recipient: To,
-                body: Message,
-                type: "SMS",
-                messageAt: result.SubmittedUtc,
-                sentBy: null, // Razor Pages no tiene recepcionista
-                cancellationToken: HttpContext.RequestAborted);
-            
-            if (!savedId.HasValue)
+            var result = await _useCase.ExecuteAsync(
+                new SendSmsCommand(To, Message, originator, AccountRef, null),
+                HttpContext.RequestAborted);
+
+            if (result.ErrorType == SendSmsErrorType.InvalidRequest ||
+                result.ErrorType == SendSmsErrorType.InvalidPhone)
             {
-                // Emitir evento SignalR para notificar el error
-                try
-                {
-                    await _hubContext.Clients.All.SendAsync("DbError", 
-                        $"No se pudo guardar mensaje enviado en BD: To={To}", 
-                        HttpContext.RequestAborted);
-                }
-                catch (Exception signalREx)
-                {
-                    _logger.LogWarning(signalREx, "Failed to emit DbError event via SignalR");
-                }
-                
-                // Mostrar advertencia al usuario (pero el mensaje sí se envió)
-                ErrorMessage = $"Mensaje enviado exitosamente, pero no se pudo guardar en la base de datos. ID: {result.Id}";
+                ErrorMessage = result.ErrorMessage ?? "Solicitud inválida.";
                 return Page();
             }
 
-            // Emitir SignalR "NewSentMessage" para notificar a clientes (WinForms, etc.)
-            try
+            if (result.ErrorType == SendSmsErrorType.SendFailed)
             {
-                // Normalizar customerPhone al formato canónico (sin '+') para ConversationState
-                string customerPhoneForSignalR;
-                try
-                {
-                    customerPhoneForSignalR = PhoneNormalizer.NormalizePhone(To);
-                    if (To != customerPhoneForSignalR)
-                    {
-                        _logger.LogDebug("Normalized customerPhone in SignalR NewSentMessage (Reply): '{Original}' -> '{Normalized}'", 
-                            To, customerPhoneForSignalR);
-                    }
-                }
-                catch (Exception normEx)
-                {
-                    _logger.LogWarning(normEx, "Failed to normalize customerPhone for SignalR: To={To}", To);
-                    // Usar el original si falla la normalización
-                    customerPhoneForSignalR = To;
-                }
-                
-                // Obtener SentBy del mensaje guardado para incluirlo en SignalR
-                // Nota: Para Razor Pages, SentBy será null (no hay recepcionista asignado desde web)
-                string? sentBy = null;
-                try
-                {
-                    using var scope = HttpContext.RequestServices.CreateScope();
-                    var dbContext = scope.ServiceProvider.GetRequiredService<NotificationsDbContext>();
-                    var savedMessage = await dbContext.SmsMessages.FindAsync(new object[] { savedId.Value }, HttpContext.RequestAborted);
-                    sentBy = savedMessage?.SentBy;
-                }
-                catch
-                {
-                    // Si falla obtener SentBy, continuar sin él (no crítico)
-                }
-                
-                await _hubContext.Clients.All.SendAsync("NewSentMessage", new
-                {
-                    id = savedId.Value.ToString(),
-                    customerPhone = customerPhoneForSignalR, // Normalizado sin '+' para ConversationState
-                    originator = originator,
-                    recipient = To, // Mantener formato E.164 con '+' para recipient
-                    body = Message,
-                    direction = 1,
-                    messageAt = result.SubmittedUtc.ToString("O"),
-                    sentBy = sentBy // Incluir SentBy si está disponible (opcional, no rompe clientes antiguos)
-                }, HttpContext.RequestAborted);
-            }
-            catch (Exception signalREx)
-            {
-                _logger.LogWarning(signalREx, "Failed to emit NewSentMessage event via SignalR");
+                ErrorMessage = "No se pudo enviar el mensaje. Verifica tu conexión e inténtalo de nuevo.";
+                return Page();
             }
 
-            SuccessMessage = $"Mensaje enviado exitosamente a {To}. ID: {result.Id}";
+            if (result.ErrorType == SendSmsErrorType.Unexpected)
+            {
+                ErrorMessage = $"Error al enviar el mensaje: {result.ErrorMessage}";
+                return Page();
+            }
+
+            if (result.Sent && !result.Saved)
+            {
+                ErrorMessage = "Mensaje enviado exitosamente, pero no se pudo guardar en la base de datos.";
+                return Page();
+            }
+
+            SuccessMessage = $"Mensaje enviado exitosamente a {To}.";
             
             // Limpiar el formulario tras enviar (cuando el usuario entra desde menú Enviar)
             ModelState.Clear();
@@ -176,12 +107,6 @@ public class MessagesReplyModel : PageModel
             Message = string.Empty;
             AccountRef = null;
 
-            return Page();
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "Failed to send message");
-            ErrorMessage = "No se pudo enviar el mensaje. Verifica tu conexión e inténtalo de nuevo.";
             return Page();
         }
         catch (Exception ex)

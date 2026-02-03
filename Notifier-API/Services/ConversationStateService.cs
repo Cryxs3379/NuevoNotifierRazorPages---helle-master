@@ -1,10 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Notifier.Messages.Application.Abstractions;
 using NotifierAPI.Data;
 using NotifierAPI.Helpers;
 
 namespace NotifierAPI.Services;
 
-public class ConversationStateService
+public class ConversationStateService : IConversationStateUpdater
 {
     private readonly NotificationsDbContext _dbContext;
     private readonly ILogger<ConversationStateService> _logger;

@@ -3,6 +3,8 @@ using NotifierAPI.Configuration;
 using NotifierAPI.Data;
 using NotifierAPI.Hubs;
 using NotifierAPI.Services;
+using Notifier.Calls.Infrastructure.Ingest;
+using Notifier.Calls.Infrastructure.Incoming;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,6 +53,8 @@ builder.Services.Configure<CallsIngestSettings>(
     builder.Configuration.GetSection("CallsIngest"));
 
 // Register BackgroundServices
+builder.Services.AddSingleton<CallsIngestProcessor>();
+builder.Services.AddSingleton<IncomingCallPoller>();
 builder.Services.AddHostedService<IncomingCallWatcher>();
 builder.Services.AddHostedService<CallsIngestBackgroundService>();
 

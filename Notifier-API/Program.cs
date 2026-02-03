@@ -5,6 +5,10 @@ using NotifierAPI.Configuration;
 using NotifierAPI.Hubs;
 using NotifierAPI.Extensions;
 using NotifierAPI.Data;
+using Notifier.Messages.Application.Abstractions;
+using Notifier.Messages.Application.SendSms;
+using Notifier.Messages.Infrastructure.Esendex;
+using Notifier.Messages.Infrastructure.SignalR;
 using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
 
@@ -97,9 +101,16 @@ builder.Services.AddScoped<SmsMessageRepository>(sp =>
         sp.GetRequiredService<NotificationsDbContext>(),
         sp.GetRequiredService<ILogger<SmsMessageRepository>>(),
         sp));
+builder.Services.AddScoped<ISmsMessageRepository>(sp => sp.GetRequiredService<SmsMessageRepository>());
 
 // Conversation State Service
 builder.Services.AddScoped<ConversationStateService>();
+builder.Services.AddScoped<IConversationStateUpdater>(sp => sp.GetRequiredService<ConversationStateService>());
+
+// Use case + adapters
+builder.Services.AddScoped<ISendSmsAndNotifyUseCase, SendSmsAndNotifyUseCase>();
+builder.Services.AddScoped<ISmsSender, EsendexSmsSenderAdapter>();
+builder.Services.AddScoped<IDomainEventPublisher, SignalRSmsEventPublisher>();
 
 // EsendexMessageWatcher (BackgroundService) - solo si está habilitado
 if (watcherSettings.Enabled)

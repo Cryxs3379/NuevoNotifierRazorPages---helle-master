@@ -19,32 +19,12 @@ public static class PhoneNormalizer
     /// <exception cref="ArgumentException">Si el teléfono es null o vacío después de normalizar (comportamiento estricto para API)</exception>
     public static string NormalizePhone(string? phone)
     {
-        if (phone == null)
-            throw new ArgumentException("Phone cannot be null", nameof(phone));
-
-        // Trim
-        var normalized = phone.Trim();
-
-        // Eliminar espacios, guiones y paréntesis
-        normalized = normalized.Replace(" ", "")
-                              .Replace("-", "")
-                              .Replace("(", "")
-                              .Replace(")", "");
-
-        // Si empieza por '+', quitarlo (formato canónico: sin '+')
-        if (normalized.StartsWith("+"))
+        if (!Notifier.Messages.Domain.PhoneNumber.TryParse(phone, out var phoneNumber))
         {
-            System.Diagnostics.Debug.WriteLine($"[PhoneNormalizer] Detected phone with '+': '{phone}' -> removing '+'");
-            normalized = normalized.Substring(1);
+            throw new ArgumentException($"Invalid phone value: '{phone}'", nameof(phone));
         }
 
-        // Validar que no esté vacío después de normalizar
-        if (string.IsNullOrWhiteSpace(normalized))
-        {
-            throw new ArgumentException("Phone cannot be empty after normalization", nameof(phone));
-        }
-
-        return normalized;
+        return phoneNumber.Canonical;
     }
 
     /// <summary>

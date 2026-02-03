@@ -9,9 +9,6 @@ namespace NotifierAPI.Controllers
     [Route("api/[controller]")]
     public class MissedCallsController : ControllerBase
     {
-        private static readonly TimeZoneInfo SpainTimeZone =
-            TimeZoneInfo.FindSystemTimeZoneById("Romance Standard Time");
-
         private readonly NotificationDbContext _context;
         private readonly ILogger<MissedCallsController> _logger;
 
@@ -19,28 +16,6 @@ namespace NotifierAPI.Controllers
         {
             _context = context;
             _logger = logger;
-        }
-
-        private DateTime NormalizeUtc(DateTime date)
-        {
-            if (date.Kind == DateTimeKind.Unspecified)
-            {
-                _logger.LogInformation("IncomingCall.DateAndTime has Unspecified kind. Forcing to UTC. Value: {Date}", date);
-                return DateTime.SpecifyKind(date, DateTimeKind.Utc);
-            }
-
-            if (date.Kind == DateTimeKind.Local)
-            {
-                return date.ToUniversalTime();
-            }
-
-            return date;
-        }
-
-        private DateTime ToSpainTime(DateTime utcDate)
-        {
-            var utc = NormalizeUtc(utcDate);
-            return TimeZoneInfo.ConvertTimeFromUtc(utc, SpainTimeZone);
         }
 
         private (bool IsMissed, bool IsAnswered, string StatusText) GetStatusInfo(byte status)
