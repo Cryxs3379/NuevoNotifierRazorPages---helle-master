@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using NotifierDesktop.Services;
 
@@ -15,9 +16,12 @@ public sealed class ToastNotificationForm : Form
     private const int DisplayDurationMs = 6000; // 6 segundos
     private const int CornerRadius = 10;
     private const int AccentBarWidth = 4;
+    private const int ActionRowHeight = 32;
+    private const int ActionRowPadding = 10;
     
     private readonly Color _accentColor;
     private readonly ToastVisualStyle _style;
+    private readonly IReadOnlyList<ToastAction> _actions;
 
     public ToastNotificationForm(
         string title,
@@ -25,9 +29,11 @@ public sealed class ToastNotificationForm : Form
         int width = 380,
         int? customHeight = null,
         Color? accentColor = null,
-        ToastVisualStyle style = ToastVisualStyle.Neutral)
+        ToastVisualStyle style = ToastVisualStyle.Neutral,
+        IReadOnlyList<ToastAction>? actions = null)
     {
         _style = style;
+        _actions = actions ?? Array.Empty<ToastAction>();
         _accentColor = accentColor ?? GetDefaultAccent(style);
 
         FormBorderStyle = FormBorderStyle.None;
@@ -43,7 +49,8 @@ public sealed class ToastNotificationForm : Form
         
         Opacity = 0;
         Width = width;
-        Height = customHeight ?? 90;
+        var defaultHeight = _actions.Count > 0 ? 130 : 90;
+        Height = customHeight ?? defaultHeight;
 
         // Habilitar double buffering
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.DoubleBuffer | ControlStyles.ResizeRedraw, true);
@@ -64,7 +71,7 @@ public sealed class ToastNotificationForm : Form
         Controls.Add(lblTitle);
 
         // Label para body
-        var bodyHeight = Height - 50;
+        var bodyHeight = Height - 50 - (_actions.Count > 0 ? (ActionRowHeight + ActionRowPadding) : 0);
         var lblBody = new Label
         {
             Text = body,
@@ -75,6 +82,54 @@ public sealed class ToastNotificationForm : Form
             AutoSize = false
         };
         Controls.Add(lblBody);
+
+        if (_actions.Count > 0)
+        {
+            var panel = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = false,
+                Height = ActionRowHeight,
+                Width = width - 32,
+                Location = new Point(16, Height - ActionRowHeight - ActionRowPadding),
+                BackColor = Color.Transparent
+            };
+
+            foreach (var action in _actions)
+            {
+                var btn = new Button
+                {
+                    Text = action.Label,
+                    AutoSize = true,
+                    Height = ActionRowHeight,
+                    FlatStyle = FlatStyle.Standard
+                };
+
+                btn.Click += async (_, __) =>
+                {
+                    try
+                    {
+                        if (action.OnClickAsync != null)
+                        {
+                            await action.OnClickAsync();
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore action errors in toast UI
+                    }
+                    finally
+                    {
+                        CloseToast();
+                    }
+                };
+
+                panel.Controls.Add(btn);
+            }
+
+            Controls.Add(panel);
+        }
 
         // Click para cerrar
         Click += (s, e) => CloseToast();
@@ -212,4 +267,10 @@ public sealed class ToastNotificationForm : Form
             _                        => Color.FromArgb(120, 120, 120),
         };
     }
+}
+
+public sealed class ToastAction
+{
+    public string Label { get; init; } = string.Empty;
+    public Func<Task>? OnClickAsync { get; init; }
 }

@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using NotifierAPI.Helpers;
 
 namespace NotifierAPI.Pages.Conversations;
 
@@ -27,11 +28,13 @@ public class ChatModel : PageModel
     public string? SentBy { get; set; }
 
     public List<ChatMessage> Messages { get; set; } = new();
+    public List<QuickReplyOption> QuickReplies { get; set; } = new();
     public string? ErrorMessage { get; set; }
 
     public async Task OnGetAsync()
     {
         await LoadMessagesAsync(markRead: true);
+        SetQuickReplies();
     }
 
     public async Task<IActionResult> OnPostSendAsync()
@@ -39,6 +42,7 @@ public class ChatModel : PageModel
         if (string.IsNullOrWhiteSpace(Phone))
         {
             ErrorMessage = "Debe indicar un teléfono para la conversación.";
+            SetQuickReplies();
             return Page();
         }
 
@@ -46,6 +50,7 @@ public class ChatModel : PageModel
         {
             ErrorMessage = "El mensaje no puede estar vacío.";
             await LoadMessagesAsync(markRead: false);
+            SetQuickReplies();
             return Page();
         }
 
@@ -67,6 +72,7 @@ public class ChatModel : PageModel
             {
                 ErrorMessage = "No se pudo enviar el mensaje. Inténtalo de nuevo.";
                 await LoadMessagesAsync(markRead: false);
+                SetQuickReplies();
                 return Page();
             }
         }
@@ -75,6 +81,7 @@ public class ChatModel : PageModel
             _logger.LogError(ex, "Error sending message for conversation {Phone}", Phone);
             ErrorMessage = "Ocurrió un error al enviar el mensaje.";
             await LoadMessagesAsync(markRead: false);
+            SetQuickReplies();
             return Page();
         }
 
@@ -86,6 +93,7 @@ public class ChatModel : PageModel
         if (string.IsNullOrWhiteSpace(Phone))
         {
             ErrorMessage = "Debe indicar un teléfono para la conversación.";
+            SetQuickReplies();
             return;
         }
 
@@ -120,7 +128,15 @@ public class ChatModel : PageModel
         {
             _logger.LogError(ex, "Error loading conversation messages for {Phone}", Phone);
             ErrorMessage = "Ocurrió un error al cargar la conversación.";
+            SetQuickReplies();
         }
+    }
+
+    private void SetQuickReplies()
+    {
+        QuickReplies = string.IsNullOrWhiteSpace(Phone)
+            ? new List<QuickReplyOption>()
+            : QuickReplyProvider.GetForPhone(Phone);
     }
 
     private async Task TryMarkReadAsync(string baseUrl, string encodedPhone)

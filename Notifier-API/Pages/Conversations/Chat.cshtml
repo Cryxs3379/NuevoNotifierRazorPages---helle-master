@@ -53,6 +53,25 @@
         </div>
     </div>
 
+    @if (Model.QuickReplies.Count > 0)
+    {
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span class="text-muted small">Respuestas rapidas:</span>
+                    @foreach (var reply in Model.QuickReplies)
+                    {
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary quick-reply-btn"
+                                data-message="@reply.Message">
+                            @reply.Label
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
     <form method="post" asp-page-handler="Send">
         <input type="hidden" asp-for="Phone" />
         <div class="row g-2">
@@ -69,3 +88,22 @@
         </div>
     </form>
 </div>
+
+@section Scripts {
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            var buttons = document.querySelectorAll(".quick-reply-btn");
+            if (!buttons.length) return;
+            var textarea = document.getElementById("NewMessage");
+            if (!textarea) return;
+
+            buttons.forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    var message = btn.getAttribute("data-message") || "";
+                    textarea.value = message;
+                    textarea.focus();
+                });
+            });
+        });
+    </script>
+}

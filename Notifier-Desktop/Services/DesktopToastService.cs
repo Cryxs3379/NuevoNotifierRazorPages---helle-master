@@ -22,12 +22,13 @@ public class DesktopToastService
         Control? uiThreadControl = null,
         int? customHeight = null,
         Color? accentColor = null,
-        ToastVisualStyle style = ToastVisualStyle.Neutral)
+        ToastVisualStyle style = ToastVisualStyle.Neutral,
+        IReadOnlyList<ToastAction>? actions = null)
     {
         if (uiThreadControl != null && uiThreadControl.InvokeRequired)
         {
             uiThreadControl.BeginInvoke(new Action(() =>
-                ShowToast(title, body, uiThreadControl, customHeight, accentColor, style)));
+                ShowToast(title, body, uiThreadControl, customHeight, accentColor, style, actions)));
             return;
         }
 
@@ -37,7 +38,7 @@ public class DesktopToastService
             if (mainForm != null && mainForm.InvokeRequired)
             {
                 mainForm.BeginInvoke(new Action(() =>
-                    ShowToast(title, body, mainForm, customHeight, accentColor, style)));
+                    ShowToast(title, body, mainForm, customHeight, accentColor, style, actions)));
                 return;
             }
         }
@@ -52,7 +53,8 @@ public class DesktopToastService
                 width: ToastWidth,
                 customHeight: customHeight,
                 accentColor: accentColor,
-                style: style);
+                style: style,
+                actions: actions);
 
             var screen = GetTargetScreen();
             var wa = screen.WorkingArea;

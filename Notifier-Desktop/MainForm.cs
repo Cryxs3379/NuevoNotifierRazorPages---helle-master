@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
@@ -741,7 +742,25 @@ public partial class MainForm : Form
                 ? message.Body
                 : "Sin contenido";
             
-            _toast.ShowToast(title, body, this, accentColor: Theme.Info, style: ToastVisualStyle.Info);
+            IReadOnlyList<ToastAction>? actions = null;
+            if (_apiClient != null)
+            {
+                var quickReply = Helpers.QuickReplyProvider.GetForPhone(customerPhone).FirstOrDefault();
+                if (quickReply != null)
+                {
+                    actions = new List<ToastAction>
+                    {
+                        new ToastAction
+                        {
+                            Label = "Enviar bienvenida",
+                            OnClickAsync = async () =>
+                                await _apiClient.SendMessageAsync(customerPhone, quickReply.Message, null)
+                        }
+                    };
+                }
+            }
+
+            _toast.ShowToast(title, body, this, accentColor: Theme.Info, style: ToastVisualStyle.Info, actions: actions);
         }
     }
 
