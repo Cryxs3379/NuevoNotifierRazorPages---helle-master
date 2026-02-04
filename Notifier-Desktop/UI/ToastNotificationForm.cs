@@ -13,11 +13,18 @@ public sealed class ToastNotificationForm : Form
     private readonly System.Windows.Forms.Timer _fadeOutTimer;
     private readonly System.Windows.Forms.Timer _closeTimer;
     
-    private const int DisplayDurationMs = 6000; // 6 segundos
+    private const int DisplayDurationMs = 15000; // 15 segundos
     private const int CornerRadius = 10;
     private const int AccentBarWidth = 4;
     private const int ActionRowHeight = 32;
-    private const int ActionRowPadding = 10;
+    private const int ActionRowPadding = 12; // Aumentado para mejor margen
+    private const int TitleHeight = 22;
+    private const int TitlePadding = 14;
+    private const int BodyPadding = 8;
+    private const int MaxBodyHeight = 150;
+    private const int MaxQuickReplyHeight = 100;
+    private const int MinToastHeight = 90;
+    private const int MaxToastHeight = 400;
     
     private readonly Color _accentColor;
     private readonly ToastVisualStyle _style;
@@ -30,7 +37,8 @@ public sealed class ToastNotificationForm : Form
         int? customHeight = null,
         Color? accentColor = null,
         ToastVisualStyle style = ToastVisualStyle.Neutral,
-        IReadOnlyList<ToastAction>? actions = null)
+        IReadOnlyList<ToastAction>? actions = null,
+        string? quickReplyMessage = null)
     {
         _style = style;
         _actions = actions ?? Array.Empty<ToastAction>();
@@ -49,8 +57,12 @@ public sealed class ToastNotificationForm : Form
         
         Opacity = 0;
         Width = width;
-        var defaultHeight = _actions.Count > 0 ? 130 : 90;
-        Height = customHeight ?? defaultHeight;
+        
+        var hasQuickReply = !string.IsNullOrWhiteSpace(quickReplyMessage);
+        
+        // Calcular altura dinámicamente
+        var calculatedHeight = CalculateHeight(body, quickReplyMessage, hasQuickReply, _actions.Count > 0);
+        Height = customHeight ?? Math.Min(MaxToastHeight, Math.Max(MinToastHeight, calculatedHeight));
 
         // Habilitar double buffering
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.DoubleBuffer | ControlStyles.ResizeRedraw, true);
@@ -64,36 +76,72 @@ public sealed class ToastNotificationForm : Form
             Text = title,
             Font = new Font("Segoe UI Semibold", 11, FontStyle.Bold),
             ForeColor = Color.FromArgb(22, 22, 22),
-            Location = new Point(16, 14),
-            Size = new Size(width - 32, 22),
+            Location = new Point(16, TitlePadding),
+            Size = new Size(width - 32, TitleHeight),
             AutoSize = false
         };
         Controls.Add(lblTitle);
 
-        // Label para body
-        var bodyHeight = Height - 50 - (_actions.Count > 0 ? (ActionRowHeight + ActionRowPadding) : 0);
-        var lblBody = new Label
+        // TextBox para body (mensaje entrante) con scroll
+        var bodyY = TitlePadding + TitleHeight + BodyPadding;
+        var bodyHeight = CalculateBodyHeight(body, hasQuickReply, _actions.Count > 0);
+        var txtBody = new TextBox
         {
             Text = body,
             Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
             ForeColor = Color.FromArgb(90, 90, 90),
-            Location = new Point(16, 38),
+            BackColor = BackColor,
+            BorderStyle = BorderStyle.None,
+            ReadOnly = true,
+            Multiline = true,
+            ScrollBars = ScrollBars.Vertical,
+            Location = new Point(16, bodyY),
             Size = new Size(width - 32, bodyHeight),
-            AutoSize = false
+            TabStop = false
         };
-        Controls.Add(lblBody);
+        Controls.Add(txtBody);
 
+        // TextBox para mensaje de respuesta rápida (si existe) con scroll
+        TextBox? txtQuickReply = null;
+        if (hasQuickReply)
+        {
+            var quickReplyY = bodyY + bodyHeight + BodyPadding;
+            var quickReplyHeight = CalculateQuickReplyHeight(quickReplyMessage!, _actions.Count > 0);
+            txtQuickReply = new TextBox
+            {
+                Text = $"Respuesta: {quickReplyMessage}",
+                Font = new Font("Segoe UI", 9f, FontStyle.Italic),
+                ForeColor = Color.FromArgb(0, 122, 255),
+                BackColor = BackColor,
+                BorderStyle = BorderStyle.None,
+                ReadOnly = true,
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical,
+                Location = new Point(16, quickReplyY),
+                Size = new Size(width - 32, quickReplyHeight),
+                TabStop = false
+            };
+            Controls.Add(txtQuickReply);
+        }
+
+        // Panel de acciones con márgenes mejorados
         if (_actions.Count > 0)
         {
+            var actionPanelY = hasQuickReply 
+                ? (txtQuickReply!.Location.Y + txtQuickReply.Height + BodyPadding)
+                : (txtBody.Location.Y + txtBody.Height + BodyPadding);
+            
             var panel = new FlowLayoutPanel
             {
                 FlowDirection = FlowDirection.LeftToRight,
                 WrapContents = false,
                 AutoSize = false,
                 Height = ActionRowHeight,
-                Width = width - 32,
-                Location = new Point(16, Height - ActionRowHeight - ActionRowPadding),
-                BackColor = Color.Transparent
+                Width = width - 32, // Márgenes izquierda y derecha de 16px cada uno
+                Location = new Point(16, actionPanelY),
+                BackColor = Color.Transparent,
+                Padding = new Padding(0, 0, 0, 0),
+                Margin = new Padding(0)
             };
 
             foreach (var action in _actions)
@@ -103,7 +151,8 @@ public sealed class ToastNotificationForm : Form
                     Text = action.Label,
                     AutoSize = true,
                     Height = ActionRowHeight,
-                    FlatStyle = FlatStyle.Standard
+                    FlatStyle = FlatStyle.Standard,
+                    Margin = new Padding(0, 0, 8, 0) // Margen derecho entre botones
                 };
 
                 btn.Click += async (_, __) =>
@@ -131,10 +180,14 @@ public sealed class ToastNotificationForm : Form
             Controls.Add(panel);
         }
 
-        // Click para cerrar
+        // Click para cerrar (solo en áreas que no sean controles interactivos)
         Click += (s, e) => CloseToast();
         lblTitle.Click += (s, e) => CloseToast();
-        lblBody.Click += (s, e) => CloseToast();
+        txtBody.Click += (s, e) => CloseToast();
+        if (txtQuickReply != null)
+        {
+            txtQuickReply.Click += (s, e) => CloseToast();
+        }
 
         // Timers
         _fadeInTimer = new System.Windows.Forms.Timer { Interval = 10 };
@@ -266,6 +319,53 @@ public sealed class ToastNotificationForm : Form
             ToastVisualStyle.Danger  => Color.FromArgb(220, 53, 69),
             _                        => Color.FromArgb(120, 120, 120),
         };
+    }
+
+    private static int CalculateHeight(string body, string? quickReplyMessage, bool hasQuickReply, bool hasActions)
+    {
+        var titleArea = TitlePadding + TitleHeight + BodyPadding;
+        var bodyArea = CalculateBodyHeight(body, hasQuickReply, hasActions);
+        var quickReplyArea = hasQuickReply ? (BodyPadding + CalculateQuickReplyHeight(quickReplyMessage!, hasActions)) : 0;
+        var actionArea = hasActions ? (BodyPadding + ActionRowHeight + ActionRowPadding) : BodyPadding;
+        
+        return titleArea + bodyArea + quickReplyArea + actionArea;
+    }
+
+    private static int CalculateBodyHeight(string body, bool hasQuickReply, bool hasActions)
+    {
+        // Calcular altura aproximada basándose en el número de líneas
+        var lines = body.Split('\n').Length;
+        var charsPerLine = 40; // Aproximadamente 40 caracteres por línea en un toast de 380px
+        var estimatedLines = Math.Max(1, (int)Math.Ceiling((double)body.Length / charsPerLine));
+        estimatedLines = Math.Max(estimatedLines, lines);
+        
+        var lineHeight = 18; // Altura aproximada por línea
+        var calculatedHeight = estimatedLines * lineHeight + 8; // +8 para padding interno
+        
+        // Si hay quick reply y acciones, limitar altura del body
+        if (hasQuickReply && hasActions)
+        {
+            return Math.Min(MaxBodyHeight, Math.Max(30, calculatedHeight));
+        }
+        else if (hasQuickReply || hasActions)
+        {
+            return Math.Min(MaxBodyHeight + 20, Math.Max(30, calculatedHeight));
+        }
+        
+        return Math.Min(MaxBodyHeight + 40, Math.Max(30, calculatedHeight));
+    }
+
+    private static int CalculateQuickReplyHeight(string quickReplyMessage, bool hasActions)
+    {
+        var lines = quickReplyMessage.Split('\n').Length;
+        var charsPerLine = 40;
+        var estimatedLines = Math.Max(1, (int)Math.Ceiling((double)quickReplyMessage.Length / charsPerLine));
+        estimatedLines = Math.Max(estimatedLines, lines);
+        
+        var lineHeight = 16; // Ligeramente más pequeño que el body
+        var calculatedHeight = estimatedLines * lineHeight + 6;
+        
+        return Math.Min(MaxQuickReplyHeight, Math.Max(20, calculatedHeight));
     }
 }
 

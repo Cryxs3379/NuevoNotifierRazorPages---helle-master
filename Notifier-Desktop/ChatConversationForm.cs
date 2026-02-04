@@ -24,11 +24,13 @@ public partial class ChatConversationForm : Form
     private readonly FlowLayoutPanel _flowChat;
     private readonly TextBox _txtMessage;
     private readonly Button _btnSend;
+    private readonly Button _btnQuickReply;
     private readonly Label _lblEmpty;
 
     private string? _currentPhoneOriginal;
     private string? _currentPhoneNormalized;
     private bool _isWindowFocused = true;
+    private QuickReplyOption? _currentQuickReply;
 
     public string? CurrentPhoneNormalized => _currentPhoneNormalized;
 
@@ -149,6 +151,41 @@ public partial class ChatConversationForm : Form
         };
         Theme.EnableDoubleBuffer(composerPanel);
 
+        // TableLayoutPanel para organizar: botón quick reply (izquierda) + textarea (centro) + botón enviar (derecha)
+        var composerLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 1,
+            Padding = new Padding(0),
+            Margin = new Padding(0)
+        };
+        composerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); // Botón quick reply
+        composerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F)); // Textarea
+        composerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110F)); // Botón enviar
+
+        _btnQuickReply = new Button
+        {
+            Text = "Respuesta rápida",
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Height = 56,
+            Padding = new Padding(Theme.Spacing8, Theme.Spacing4, Theme.Spacing8, Theme.Spacing4),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.Transparent,
+            ForeColor = Theme.AccentBlue,
+            Font = Theme.Small,
+            Cursor = Cursors.Hand,
+            Visible = false,
+            Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Bottom
+        };
+        _btnQuickReply.FlatAppearance.BorderColor = Theme.AccentBlue;
+        _btnQuickReply.FlatAppearance.BorderSize = 1;
+        _btnQuickReply.FlatAppearance.MouseOverBackColor = Color.FromArgb(240, 248, 255);
+        _btnQuickReply.FlatAppearance.MouseDownBackColor = Color.FromArgb(230, 240, 250);
+        _btnQuickReply.Click += (s, e) => BtnQuickReply_Click();
+        Theme.EnableDoubleBuffer(_btnQuickReply);
+
         _txtMessage = new TextBox
         {
             Dock = DockStyle.Fill,
@@ -159,7 +196,7 @@ public partial class ChatConversationForm : Form
             BorderStyle = BorderStyle.FixedSingle,
             BackColor = Theme.Surface,
             ForeColor = Theme.TextPrimary,
-            Margin = new Padding(0, 0, Theme.Spacing8, 0),
+            Margin = new Padding(Theme.Spacing8, 0, Theme.Spacing8, 0),
             Padding = new Padding(Theme.Spacing8)
         };
         _txtMessage.KeyDown += TxtMessage_KeyDown;
@@ -168,15 +205,15 @@ public partial class ChatConversationForm : Form
         _btnSend = new Button
         {
             Text = "Enviar",
-            Dock = DockStyle.Right,
-            Width = 110,
+            Dock = DockStyle.Fill,
             Height = 56,
             Enabled = false,
             BackColor = Theme.TextTertiary,
             ForeColor = Color.White,
             FlatStyle = FlatStyle.Flat,
             Font = Theme.BodyBold,
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            Anchor = AnchorStyles.Right | AnchorStyles.Top | AnchorStyles.Bottom
         };
         _btnSend.FlatAppearance.BorderSize = 0;
         _btnSend.FlatAppearance.MouseOverBackColor = Theme.AccentBlueHover;
@@ -184,8 +221,11 @@ public partial class ChatConversationForm : Form
         _btnSend.Click += async (s, e) => await BtnSend_Click();
         Theme.EnableDoubleBuffer(_btnSend);
 
-        composerPanel.Controls.Add(_txtMessage);
-        composerPanel.Controls.Add(_btnSend);
+        composerLayout.Controls.Add(_btnQuickReply, 0, 0);
+        composerLayout.Controls.Add(_txtMessage, 1, 0);
+        composerLayout.Controls.Add(_btnSend, 2, 0);
+
+        composerPanel.Controls.Add(composerLayout);
 
         Controls.Add(_flowChat);
         Controls.Add(composerPanel);
@@ -233,6 +273,7 @@ public partial class ChatConversationForm : Form
 
         _txtMessage.Enabled = true;
         UpdateSendState();
+        UpdateQuickReplyButton();
         _txtMessage.Focus();
     }
 
@@ -408,6 +449,62 @@ public partial class ChatConversationForm : Form
         var hasText = !string.IsNullOrWhiteSpace(_txtMessage.Text);
         _btnSend.Enabled = hasPhone && hasText;
         _btnSend.BackColor = _btnSend.Enabled ? Theme.AccentBlue : Theme.TextTertiary;
+    }
+
+    private void UpdateQuickReplyButton()
+    {
+        if (_btnQuickReply == null) return;
+
+        if (string.IsNullOrWhiteSpace(_currentPhoneOriginal))
+        {
+            _btnQuickReply.Visible = false;
+            _currentQuickReply = null;
+            return;
+        }
+
+        var quickReplies = QuickReplyProvider.GetForPhone(_currentPhoneOriginal);
+        _currentQuickReply = quickReplies.FirstOrDefault();
+
+        if (_currentQuickReply != null)
+        {
+            _btnQuickReply.Visible = true;
+            _btnQuickReply.Text = "Respuesta rápida";
+            _btnQuickReply.Enabled = !string.IsNullOrWhiteSpace(_currentPhoneNormalized);
+        }
+        else
+        {
+            _btnQuickReply.Visible = false;
+        }
+    }
+
+    private void BtnQuickReply_Click()
+    {
+        if (_currentQuickReply == null)
+        {
+            return;
+        }
+
+        SetQuickReplyMessage(_currentQuickReply.Message);
+    }
+
+    public void SetQuickReplyMessage(string message)
+    {
+        if (InvokeRequired)
+        {
+            Invoke(new Action<string>(SetQuickReplyMessage), message);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        _txtMessage.Text = message;
+        _txtMessage.Focus();
+        _txtMessage.SelectionStart = _txtMessage.Text.Length;
+        _txtMessage.SelectionLength = 0;
+        UpdateSendState();
     }
 
     private void ShowLoading(bool show)

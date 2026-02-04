@@ -743,24 +743,33 @@ public partial class MainForm : Form
                 : "Sin contenido";
             
             IReadOnlyList<ToastAction>? actions = null;
+            string? quickReplyMessage = null;
             if (_apiClient != null)
             {
                 var quickReply = Helpers.QuickReplyProvider.GetForPhone(customerPhone).FirstOrDefault();
                 if (quickReply != null)
                 {
+                    quickReplyMessage = quickReply.Message;
+                    var operatorName = !string.IsNullOrWhiteSpace(_settings.OperatorName)
+                        ? _settings.OperatorName
+                        : Environment.UserName;
+                    
                     actions = new List<ToastAction>
                     {
                         new ToastAction
                         {
-                            Label = "Enviar bienvenida",
+                            Label = "Enviar",
                             OnClickAsync = async () =>
-                                await _apiClient.SendMessageAsync(customerPhone, quickReply.Message, null)
+                            {
+                                // Enviar directamente el mensaje usando el usuario de configuración
+                                await _apiClient.SendMessageAsync(customerPhone, quickReply.Message, operatorName);
+                            }
                         }
                     };
                 }
             }
 
-            _toast.ShowToast(title, body, this, accentColor: Theme.Info, style: ToastVisualStyle.Info, actions: actions);
+            _toast.ShowToast(title, body, this, accentColor: Theme.Info, style: ToastVisualStyle.Info, actions: actions, quickReplyMessage: quickReplyMessage);
         }
     }
 
